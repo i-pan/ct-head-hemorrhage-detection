@@ -4,7 +4,7 @@ from skp.configs import Config
 CONFIG_FIELD_DOCS = {
     "runtime": {
         "save_dir": "Root directory for experiment outputs before config/run/fold subdirectories are appended.",
-        "project": "MLflow experiment name.",
+        "project": "Required MLflow experiment name. Set explicitly in each experiment config.",
         "mlflow_tracking_uri": "Optional MLflow tracking URI. If None, MLflow uses its environment/default behavior.",
         "debug": "Boolean flag set by --debug; intended for configs/datasets to reduce work during quick checks.",
         "float32_matmul_precision": "Value passed to torch.set_float32_matmul_precision.",
@@ -81,7 +81,6 @@ CONFIG_FIELD_DOCS = {
 def runtime_defaults(cfg: Config) -> Config:
     """Apply project/runtime defaults shared by all experiment templates."""
     cfg.save_dir = "./experiments"
-    cfg.project = "skp"
     cfg.mlflow_tracking_uri = None
     cfg.debug = False
     cfg.float32_matmul_precision = "high"

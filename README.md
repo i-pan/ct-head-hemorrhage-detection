@@ -18,6 +18,9 @@ uv sync --group train --group dev
 uv run pytest
 ```
 
+Optionally copy `.env.example` to `.env` and define `MLFLOW_TRACKING_URI`
+plus any required MLflow credentials for remote experiment tracking.
+
 Copy one of the starter configs from `src/skp/configs/templates/` into
 `src/skp/configs/`, edit the data paths and experiment settings, then run:
 
@@ -104,6 +107,20 @@ The core training environment is pinned to the official PyTorch CUDA 12.4 wheel
 family: `torch==2.6.0+cu124` and `torchvision==0.21.0+cu124`. The uv source
 mapping uses the PyTorch CUDA 12.4 index only for those packages; everything
 else resolves from PyPI.
+
+For CUDA runs, `skp-train` applies a GCP GPU environment cleanup that forces
+NCCL onto the socket backend and removes inherited `LD_LIBRARY_PATH` before
+trainer validation. Override the socket interface with:
+
+```bash
+NCCL_SOCKET_IFNAME=ens uv run skp-train ...
+```
+
+Disable it entirely with:
+
+```bash
+GCP_NCCL_SOCKET_HACK_DISABLE=1 uv run skp-train ...
+```
 
 ## Updating The Template From A Project
 
@@ -203,6 +220,7 @@ cfg = Config()
 runtime_defaults(cfg)
 dataloader_defaults(cfg)
 
+cfg.project = "my_experiment"
 cfg.task = "classification"
 cfg.model = "classification.net2d"
 cfg.dataset = "simple2d"
@@ -293,7 +311,19 @@ double underscores for nested dictionaries, for example
 
 ## Logging And Outputs
 
-MLflow is the only experiment logger. By default, outputs are written under:
+MLflow is the only experiment logger. Each config must explicitly set
+`cfg.project`, which becomes the MLflow experiment name. This avoids cloned
+projects silently logging every run to a generic template experiment.
+
+Remote tracking can be configured with environment variables, either exported in
+the shell or loaded from a local `.env` file:
+
+```bash
+cp .env.example .env
+# Edit .env with MLFLOW_TRACKING_URI and credentials when needed.
+```
+
+By default, local outputs are written under:
 
 ```text
 experiments/<config_name>/<run_id>/fold<fold>/

@@ -14,6 +14,7 @@ runtime_defaults(cfg)
 dataloader_defaults(cfg)
 classification_2d_defaults(cfg)
 
+cfg.project = "my_classification_experiment"
 cfg.task = "classification"
 cfg.model = "classification.net2d"
 cfg.backbone = "resnet18"

@@ -10,6 +10,7 @@ runtime_defaults(cfg)
 dataloader_defaults(cfg)
 cls_seg_2d_defaults(cfg)
 
+cfg.project = "my_cls_seg_experiment"
 cfg.task = "cls_seg"
 cfg.model = "segmentation.unet_cls"
 cfg.backbone = "resnet18"

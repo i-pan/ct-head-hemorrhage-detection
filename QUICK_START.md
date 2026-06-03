@@ -121,6 +121,7 @@ dataloader_defaults(cfg)
 classification_2d_defaults(cfg)
 
 # Task/model
+cfg.project = "imagewoof_quickstart"
 cfg.task = "classification"
 cfg.model = "classification.net2d"
 cfg.backbone = "resnet18"
