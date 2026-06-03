@@ -149,6 +149,11 @@ When you fix something reusable in a project:
 5. Record the decision in `DECISIONS.md`.
 6. Pull the template changes back into active projects when useful.
 
+For small useful changes that are not urgent, write a short note in
+`TEMPLATE_BACKLOG.md` instead of pushing a tiny template commit immediately.
+Batch those items into a periodic template update once a few have accumulated
+or once one becomes important for active work.
+
 Useful commands:
 
 ```bash

@@ -74,3 +74,4 @@ This file tracks shared project decisions as SKPv2 is cleaned up into a reusable
 - Removed the default MLflow experiment name from `runtime_defaults`. Experiment
   configs now set `cfg.project` explicitly so cloned projects do not all log to
   the template-level `skp` experiment.
+- Added `TEMPLATE_BACKLOG.md` as a slow lane for small reusable template improvements that should be batched instead of committed and pushed one by one.
