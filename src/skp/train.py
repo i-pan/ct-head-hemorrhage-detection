@@ -23,9 +23,11 @@ from lightning.pytorch.plugins import TorchSyncBatchNorm
 from lightning.pytorch.utilities import rank_zero_only
 from timm.layers import convert_sync_batchnorm
 from typing import Optional, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 from skp.callbacks import EMACallback, MLFlowSystemMonitorCallback, GPUStatsLogger
 from skp.configs.base import Config
+from skp.environment import configure_gcp_gpu_environment, load_project_dotenv
 from skp.optim import get_optimizer, get_scheduler
 from skp.runners import run_hyperparameter_sweep, run_progressive_resizing
 
@@ -372,10 +374,10 @@ def get_trainer(cfg: Config) -> Tuple[lightning.Trainer, Config]:
         tracking_uri = os.path.join(cfg.save_dir, "mlflow_dry_run")
         _print_rank_zero(f"MLflow dry run enabled: logging to {tracking_uri}")
 
-    print(f"MLflow tracking URI: {tracking_uri}")
+    print(f"MLflow tracking URI: {format_tracking_uri_for_log(tracking_uri)}")
 
     logger = MLFlowLogger(
-        experiment_name=cfg.project,
+        experiment_name=cfg.require("project"),
         run_name=cfg.run_id,
         save_dir=os.path.join(cfg.save_dir, "mlflow"),
         tracking_uri=tracking_uri,
@@ -402,6 +404,19 @@ def get_trainer(cfg: Config) -> Tuple[lightning.Trainer, Config]:
     )
 
     return trainer, cfg
+
+
+def format_tracking_uri_for_log(tracking_uri: str | None) -> str | None:
+    """Avoid printing credentials embedded in a tracking URI."""
+    if tracking_uri is None:
+        return None
+    parts = urlsplit(tracking_uri)
+    if parts.username is None and parts.password is None:
+        return tracking_uri
+    hostname = parts.hostname or ""
+    if parts.port is not None:
+        hostname = f"{hostname}:{parts.port}"
+    return urlunsplit((parts.scheme, hostname, parts.path, parts.query, parts.fragment))
 
 
 def get_loss(cfg: Config) -> torch.nn.Module:
@@ -604,10 +619,13 @@ def after_fit(trainer: lightning.Trainer) -> None:
 
 
 def main():
+    load_project_dotenv()
     # uses parse_known_args() to separate into specified args
     # in parse_args and unknown args which will be exclusively used for
     # overwriting config parameters
     args, overwrite_args = parse_args()
+    if args.accelerator == "cuda":
+        configure_gcp_gpu_environment()
     validate_trainer_args(args)
     kfold = args.__dict__.pop("kfold")
 

@@ -66,3 +66,11 @@ This file tracks shared project decisions as SKPv2 is cleaned up into a reusable
 - Pin the core training environment to the official PyTorch CUDA 12.4 wheel family (`torch==2.6.0+cu124`, `torchvision==0.21.0+cu124`) with explicit uv source mapping for those packages only.
 - GPU/DDP training should fail early when CUDA is unavailable, too few devices are visible, NCCL is missing, or SyncBatchNorm is requested outside CUDA DDP.
 - Custom metrics should manually gather prediction/target state across distributed ranks before computing validation scores, preserving explicit metric control while making DDP metrics global rather than per-rank averages.
+- Added `.env.example` and automatic `.env` loading so remote MLflow tracking
+  URIs and credentials can be configured locally without committing secrets.
+- Added a GCP GPU environment cleanup for CUDA runs that forces NCCL onto the
+  socket backend, removes inherited `LD_LIBRARY_PATH`, and can be disabled with
+  `GCP_NCCL_SOCKET_HACK_DISABLE=1`.
+- Removed the default MLflow experiment name from `runtime_defaults`. Experiment
+  configs now set `cfg.project` explicitly so cloned projects do not all log to
+  the template-level `skp` experiment.

@@ -1,3 +1,4 @@
+import os
 import re
 from argparse import Namespace
 
@@ -5,6 +6,7 @@ import pytest
 
 from skp.configs import Config
 from skp.train import (
+    format_tracking_uri_for_log,
     generate_random_run_id,
     get_split_save_name,
     parse_limit_batches,
@@ -67,3 +69,16 @@ def test_validate_trainer_args_requires_no_sync_batchnorm_for_cpu():
 
 def test_validate_trainer_args_allows_cpu_ddp_without_sync_batchnorm():
     validate_trainer_args(_trainer_args(accelerator="cpu", no_sync_batchnorm=True))
+
+
+def test_format_tracking_uri_for_log_strips_embedded_credentials():
+    assert (
+        format_tracking_uri_for_log("https://user:pass@mlflow.example.com:5000/path")
+        == "https://mlflow.example.com:5000/path"
+    )
+    assert format_tracking_uri_for_log("sqlite:///mlflow.db") == "sqlite:///mlflow.db"
+    assert format_tracking_uri_for_log(None) is None
+
+
+def test_environment_file_is_gitignored():
+    assert os.path.exists(".env.example")

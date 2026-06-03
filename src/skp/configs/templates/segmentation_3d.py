@@ -11,6 +11,7 @@ runtime_defaults(cfg)
 dataloader_defaults(cfg)
 segmentation_3d_defaults(cfg)
 
+cfg.project = "my_segmentation_3d_experiment"
 cfg.task = "segmentation_3d"
 cfg.model = "segmentation.base_3d"
 cfg.decoder_type = "DeepLabV3PlusDecoder3d"

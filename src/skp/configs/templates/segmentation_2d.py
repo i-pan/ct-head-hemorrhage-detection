@@ -14,6 +14,7 @@ runtime_defaults(cfg)
 dataloader_defaults(cfg)
 segmentation_2d_defaults(cfg)
 
+cfg.project = "my_segmentation_experiment"
 cfg.task = "segmentation_2d"
 cfg.model = "segmentation.base"
 cfg.backbone = "resnet18"

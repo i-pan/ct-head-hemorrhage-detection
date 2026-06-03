@@ -34,6 +34,7 @@ def test_default_groups_define_documented_core_values():
     classification_2d_defaults(cfg)
 
     assert cfg.save_dir == "./experiments"
+    assert cfg.get("project") is None
     assert cfg.persistent_workers is True
     assert cfg.mixup is None
     assert "save_dir" in CONFIG_FIELD_DOCS["runtime"]
