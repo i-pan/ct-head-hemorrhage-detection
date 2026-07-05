@@ -233,6 +233,8 @@ uv run skp-train imagewoof_quickstart \
   --strategy ddp
 ```
 
+If `--devices` is omitted for CUDA training, SKPv2 uses all visible GPUs.
+
 Outputs are written under:
 
 ```text
@@ -240,7 +242,8 @@ experiments/imagewoof_quickstart/<run_id>/fold0/
 ```
 
 That folder contains checkpoints, MLflow artifacts, the serialized final config,
-and the `best.ckpt` symlink.
+and the `best.ckpt` symlink. MLflow names the run
+`imagewoof_quickstart/<run_id>` so shared experiments remain easy to scan.
 
 ## 7. Common Tweaks
 

@@ -75,3 +75,8 @@ This file tracks shared project decisions as SKPv2 is cleaned up into a reusable
   configs now set `cfg.project` explicitly so cloned projects do not all log to
   the template-level `skp` experiment.
 - Added `TEMPLATE_BACKLOG.md` as a slow lane for small reusable template improvements that should be batched instead of committed and pushed one by one.
+- MLflow run names now use `<config_name>/<run_id>` while local artifacts keep
+  the existing `experiments/<config_name>/<run_id>/...` layout, making shared
+  experiments easier to scan without opening run details.
+- CUDA training now defaults to `--devices -1`, resolving to all visible CUDA
+  devices during trainer validation before Lightning trainer construction.

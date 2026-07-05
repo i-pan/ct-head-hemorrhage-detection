@@ -69,7 +69,7 @@ def parse_args():
     # due to overwrite/unknown arguments, prefer not to use LightningCLI
     parser.add_argument("--strategy", type=str, default="ddp")
     parser.add_argument("--precision", type=str, default="bf16-mixed")
-    parser.add_argument("--devices", type=int, default=2)
+    parser.add_argument("--devices", type=int, default=-1)
     parser.add_argument("--accelerator", type=str, default="cuda")
     parser.add_argument("--num_nodes", type=int, default=1)
     parser.add_argument("--gradient_clip_val", type=float, default=0.0)
@@ -101,10 +101,6 @@ def parse_limit_batches(value: str) -> int | float:
 
 def validate_trainer_args(args: argparse.Namespace) -> None:
     """Fail early for accelerator/DDP settings that Lightning would reject later."""
-    devices = args.devices if args.devices is not None else 1
-    if devices < 1:
-        raise ValueError("--devices must be a positive integer.")
-
     strategy = args.strategy or "auto"
     is_ddp = strategy == "ddp" or str(strategy).startswith("ddp")
     sync_batchnorm = not args.no_sync_batchnorm
@@ -118,14 +114,32 @@ def validate_trainer_args(args: argparse.Namespace) -> None:
                 "run with --accelerator cpu."
             )
         available_devices = torch.cuda.device_count()
+        if args.devices == -1:
+            args.devices = available_devices
+        devices = args.devices if args.devices is not None else 1
+        if devices < 1:
+            raise ValueError(
+                "--devices must be a positive integer or -1 for all visible "
+                "CUDA devices."
+            )
         if devices > available_devices:
             raise ValueError(
                 f"--devices {devices} requested, but only {available_devices} CUDA "
                 "device(s) are visible."
             )
         if is_ddp and not torch.distributed.is_nccl_available():
-            raise RuntimeError("DDP CUDA training requires NCCL, but NCCL is unavailable.")
-    elif sync_batchnorm:
+            raise RuntimeError(
+                "DDP CUDA training requires NCCL, but NCCL is unavailable."
+            )
+    else:
+        devices = args.devices if args.devices is not None else 1
+        if devices == -1:
+            devices = 1
+            args.devices = devices
+        if devices < 1:
+            raise ValueError("--devices must be a positive integer.")
+
+    if args.accelerator != "cuda" and sync_batchnorm:
         raise ValueError(
             "SyncBatchNorm is only supported for CUDA DDP runs. Add "
             "--no_sync_batchnorm when using CPU or non-CUDA accelerators."
@@ -279,6 +293,11 @@ def get_split_save_name(cfg: Config) -> str:
     return "fixed_split"
 
 
+def get_mlflow_run_name(cfg: Config) -> str:
+    """Return a compact run name that identifies the producing config."""
+    return f"{cfg.config}/{cfg.run_id}"
+
+
 def generate_experiment_save_dir(cfg: Config, run_id: Optional[str] = None) -> Config:
     save_dir = os.path.abspath(cfg.save_dir)
 
@@ -378,7 +397,7 @@ def get_trainer(cfg: Config) -> Tuple[lightning.Trainer, Config]:
 
     logger = MLFlowLogger(
         experiment_name=cfg.require("project"),
-        run_name=cfg.run_id,
+        run_name=get_mlflow_run_name(cfg),
         save_dir=os.path.join(cfg.save_dir, "mlflow"),
         tracking_uri=tracking_uri,
         log_model=False,

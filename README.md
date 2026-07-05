@@ -25,8 +25,11 @@ Copy one of the starter configs from `src/skp/configs/templates/` into
 `src/skp/configs/`, edit the data paths and experiment settings, then run:
 
 ```bash
-uv run skp-train my_config --devices 1 --strategy auto --accelerator cuda
+uv run skp-train my_config --accelerator cuda
 ```
+
+CUDA training defaults to all visible GPUs (`--devices -1`). Use
+`--devices 1 --strategy auto` for a single-GPU run.
 
 For two-GPU DDP:
 
@@ -335,7 +338,9 @@ experiments/<config_name>/<run_id>/fold<fold>/
 ```
 
 Run IDs use the human-readable `petname` format `<word>-<word>-<4digit_int>`,
-for example `silver-lake-0427`. Fixed-split runs without `cfg.fold` use:
+for example `silver-lake-0427`. MLflow run names use
+`<config_name>/<run_id>` so shared experiments can be scanned by config.
+Fixed-split runs without `cfg.fold` use:
 
 ```text
 experiments/<config_name>/<run_id>/fixed_split/
