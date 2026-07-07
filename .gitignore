@@ -16,6 +16,7 @@ dist/
 
 outputs/
 runs/
+logs/
 wandb/
 mlruns/
 checkpoints/

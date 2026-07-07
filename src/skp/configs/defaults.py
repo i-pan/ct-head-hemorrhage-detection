@@ -44,6 +44,8 @@ CONFIG_FIELD_DOCS = {
         "enable_gradient_checkpointing": "Enable model-supported activation checkpointing.",
         "multisample_dropout": "Use model-supported multisample dropout.",
         "model_activation_fn": "Optional model output activation for wrappers that apply one.",
+        "normalization": "Input normalization mode. Prefer 'linear' with explicit input and output bounds; legacy aliases 0_1, -1_1, minmax_0_1, and minmax_-1_1 are supported by classification models.",
+        "normalization_params": "Parameters consumed by the normalization mode, e.g. {'input_min': 0, 'input_max': 255, 'output_min': 0, 'output_max': 1} for linear normalization.",
         "pool_params": "Optional pooling layer parameter dictionary.",
         "vars": "Optional auxiliary variable names consumed by some custom models.",
         "sampling_weight_col": "Annotation column used by weighted dataset sampling.",

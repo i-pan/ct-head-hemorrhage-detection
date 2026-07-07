@@ -23,8 +23,13 @@ cfg.num_input_channels = 3
 cfg.num_classes = 1
 cfg.pool = "avg"
 cfg.dropout = 0.0
-cfg.normalization = "0_1"
-cfg.normalization_params = {"min": 0, "max": 255}
+cfg.normalization = "linear"
+cfg.normalization_params = {
+    "input_min": 0,
+    "input_max": 255,
+    "output_min": 0,
+    "output_max": 1,
+}
 cfg.backbone_img_size = False
 
 cfg.fold = 0
