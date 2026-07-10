@@ -164,6 +164,41 @@ def test_depth_flip_reverses_slice_axis_without_mixing_window_channels():
     assert out.tolist() == [[[20, 21, 10, 11, 0, 1]]]
 
 
+def test_rsna_ich_dataset_applies_depth_flip_after_transforms(tmp_path):
+    cfg = _dataset_cfg(tmp_path)
+    cfg.depth_flip_p = 1.0
+    cfg.horizontal_flip_p = 0.0
+    cfg.vertical_flip_p = 0.0
+
+    sample = Dataset(cfg, "train")[0]
+
+    assert torch.all(sample["x"][:, 0] != 0)
+    assert torch.all(sample["x"][:, 2] == 0)
+
+
+def test_rsna_ich_dataset_can_emit_single_windowed_slice(tmp_path):
+    cfg = _dataset_cfg(tmp_path)
+    cfg.num_slices = 1
+
+    sample = Dataset(cfg, "train")[1]
+
+    assert sample["x"].shape == (3, 4, 4)
+    assert torch.allclose(sample["x"][0], torch.full((4, 4), 0.5))
+
+
+def test_rsna_ich_dataset_can_flatten_2p5d_slices_to_channels(tmp_path):
+    cfg = _dataset_cfg(tmp_path)
+    cfg.num_slices = 3
+    cfg.flatten_depth_to_channels = True
+
+    sample = Dataset(cfg, "train")[1]
+
+    assert sample["x"].shape == (9, 4, 4)
+    assert torch.allclose(sample["x"][0], torch.zeros(4, 4))
+    assert torch.allclose(sample["x"][3], torch.full((4, 4), 0.5))
+    assert torch.allclose(sample["x"][6], torch.ones(4, 4))
+
+
 def test_linear_normalization_names_input_and_output_bounds_explicitly():
     x = torch.tensor([0.0, 0.5, 1.0])
 

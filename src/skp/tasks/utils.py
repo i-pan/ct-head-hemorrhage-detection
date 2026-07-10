@@ -63,18 +63,41 @@ def build_dataloader(cfg: Config, dataset: Dataset, mode: str) -> DataLoader:
         return loader
 
     def worker_init_fn(worker_id: int) -> None:
+        try:
+            import cv2
+
+            cv2.setNumThreads(0)
+            cv2.ocl.setUseOpenCL(False)
+        except ImportError:
+            pass
         np.random.seed(torch.initial_seed() % 2**32)
 
+    num_workers = (
+        cfg.num_workers
+        if mode == "train"
+        else cfg.get("val_num_workers", cfg.num_workers)
+    )
     dataloader_params = {}
-    dataloader_params["num_workers"] = cfg.num_workers
+    dataloader_params["num_workers"] = num_workers
     dataloader_params["drop_last"] = mode == "train"
     dataloader_params["shuffle"] = mode == "train"
     dataloader_params["pin_memory"] = cfg.get("pin_memory", False) or False
     dataloader_params["collate_fn"] = dataset.collate_fn
-    if cfg.num_workers > 0:
-        dataloader_params["persistent_workers"] = (
-            cfg.get("persistent_workers", False) or False
-        )
+    if num_workers > 0:
+        if mode == "train":
+            persistent_workers = cfg.get("persistent_workers", False) or False
+            prefetch_factor = cfg.get("prefetch_factor", 2) or 2
+        else:
+            persistent_workers = cfg.get(
+                "val_persistent_workers",
+                cfg.get("persistent_workers", False) or False,
+            )
+            prefetch_factor = cfg.get(
+                "val_prefetch_factor",
+                cfg.get("prefetch_factor", 2) or 2,
+            )
+        dataloader_params["persistent_workers"] = persistent_workers
+        dataloader_params["prefetch_factor"] = prefetch_factor
 
     if mode == "train":
         dataloader_params["batch_size"] = cfg.batch_size

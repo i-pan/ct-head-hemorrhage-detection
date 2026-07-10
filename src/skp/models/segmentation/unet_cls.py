@@ -5,6 +5,7 @@ from typing import Dict, List, Union
 from skp.configs import Config
 from skp.models.pooling import get_pool_layer
 from skp.models.segmentation.base import Net as Segmenter
+from skp.models.utils import filter_weights_by_prefix, torch_load_weights
 
 
 class Net(nn.Module):
@@ -27,19 +28,25 @@ class Net(nn.Module):
             print(
                 f"Loading pretrained segmenter from {self.cfg.load_pretrained_segmenter} ..."
             )
-            weights = torch.load(
-                self.cfg.load_pretrained_segmenter,
-                map_location="cpu",
-                weights_only=True,
-            )["state_dict"]
-            weights = {
-                k.replace("model.", ""): v
-                for k, v in weights.items()
-                if k.startswith("model.")
-            }
+            weights = torch_load_weights(self.cfg.load_pretrained_segmenter)
+            weights = filter_weights_by_prefix(weights, "model.")
             self.segmenter.load_state_dict(weights)
 
+        if self.cfg.get("load_pretrained_classifier_head"):
+            self.load_pretrained_classifier_head()
+
         self.criterion = None
+
+    def load_pretrained_classifier_head(self) -> None:
+        print(
+            "Loading pretrained classifier head from "
+            f"{self.cfg.load_pretrained_classifier_head} ..."
+        )
+        weights = torch_load_weights(self.cfg.load_pretrained_classifier_head)
+        weights = filter_weights_by_prefix(weights, "model.linear.")
+        if len(weights) == 0:
+            weights = filter_weights_by_prefix(weights, "model.classifier.2.")
+        self.classifier[-1].load_state_dict(weights, strict=True)
 
     def forward(
         self,

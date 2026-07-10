@@ -1,4 +1,4 @@
-"""RSNA ICH 2.5D CT classification dataset."""
+"""RSNA ICH CT classification dataset."""
 
 from __future__ import annotations
 
@@ -85,9 +85,19 @@ class Dataset(TorchDataset):
             (80, 200),
             (600, 2800),
         ]
+        windows = np.asarray(self.windows, dtype=np.float32)
+        self.window_lowers = windows[:, 0] - windows[:, 1] / 2
+        self.window_uppers = windows[:, 0] + windows[:, 1] / 2
+        self.window_widths = windows[:, 1]
         self.depth = cfg.get("num_slices") or 3
-        if self.depth != 3:
-            raise ValueError("rsna_ich_2p5d currently expects cfg.num_slices = 3.")
+        if self.depth not in {1, 3}:
+            raise ValueError("rsna_ich_2p5d currently expects cfg.num_slices = 1 or 3.")
+        self.flatten_depth_to_channels = cfg.get("flatten_depth_to_channels", False)
+        self.depth_flip_p = cfg.get("depth_flip_p", 0.0) if mode == "train" else 0.0
+        self.horizontal_flip_p = (
+            cfg.get("horizontal_flip_p", 0.0) if mode == "train" else 0.0
+        )
+        self.vertical_flip_p = cfg.get("vertical_flip_p", 0.0) if mode == "train" else 0.0
 
         df = self._load_annotations()
         df = self._filter_mode(df, mode).reset_index(drop=True)
@@ -152,8 +162,12 @@ class Dataset(TorchDataset):
 
     def _filter_mode(self, df: pd.DataFrame, mode: str) -> pd.DataFrame:
         if mode == "train":
+            if (df["split"] == "val").any():
+                return df.loc[df["split"] == "train"]
             return df.loc[(df["split"] == "train") & (df["fold"] != self.cfg.fold)]
         if mode == "val":
+            if (df["split"] == "val").any():
+                return df.loc[df["split"] == "val"]
             return df.loc[(df["split"] == "train") & (df["fold"] == self.cfg.fold)]
         if mode == "test":
             return df.loc[df["split"] == "test"]
@@ -182,40 +196,71 @@ class Dataset(TorchDataset):
         if image.shape != self.image_size:
             image = center_crop_or_pad_borders(image, self.image_size, pad_val=0)
 
-        hu = image.astype(np.float32) * float(slope) + float(intercept)
-        channels = []
-        for level, width in self.windows:
-            lower = level - width / 2
-            upper = level + width / 2
-            windowed = np.clip(hu, lower, upper)
-            windowed = (windowed - lower) / (width + 1e-6)
-            channels.append(windowed.astype(np.float32))
-        return np.stack(channels, axis=0)
+        hu = image.astype(np.float32)
+        hu *= float(slope)
+        hu += float(intercept)
+        windowed = np.clip(
+            hu[None],
+            self.window_lowers[:, None, None],
+            self.window_uppers[:, None, None],
+        )
+        windowed -= self.window_lowers[:, None, None]
+        windowed /= self.window_widths[:, None, None] + 1e-6
+        return windowed
+
+    def _apply_random_flips(self, x: np.ndarray) -> np.ndarray:
+        if x.ndim == 4 and self.depth_flip_p and np.random.random() < self.depth_flip_p:
+            x = x[:, :, ::-1, :]
+        if self.horizontal_flip_p and np.random.random() < self.horizontal_flip_p:
+            x = x[:, ::-1, ...]
+        if self.vertical_flip_p and np.random.random() < self.vertical_flip_p:
+            x = x[::-1, :, ...]
+        return x
 
     def __getitem__(self, index: int) -> dict[str, torch.Tensor]:
         row = self.df.iloc[index]
-        slices = [
-            self._load_windowed_slice(
-                row.prev_slice_path,
-                slope=row.rescale_slope,
-                intercept=row.rescale_intercept,
-            ),
-            self._load_windowed_slice(
+        if self.depth == 1:
+            x = self._load_windowed_slice(
                 row.slice_path,
                 slope=row.rescale_slope,
                 intercept=row.rescale_intercept,
-            ),
-            self._load_windowed_slice(
-                row.next_slice_path,
-                slope=row.rescale_slope,
-                intercept=row.rescale_intercept,
-            ),
-        ]
-        x = np.stack(slices, axis=0)  # D, C, H, W
-        x = rearrange(x, "d c h w -> h w (d c)")
-        if self.transforms is not None:
-            x = self.transforms(image=x)["image"]
-        x = rearrange(x, "h w (d c) -> c d h w", d=self.depth, c=len(self.windows))
+            )
+            x = x.transpose(1, 2, 0)  # H, W, C
+            if self.transforms is not None:
+                x = self.transforms(image=x)["image"]
+            x = self._apply_random_flips(x)
+            x = x.transpose(2, 0, 1)  # C, H, W
+        else:
+            slices = [
+                self._load_windowed_slice(
+                    row.prev_slice_path,
+                    slope=row.rescale_slope,
+                    intercept=row.rescale_intercept,
+                ),
+                self._load_windowed_slice(
+                    row.slice_path,
+                    slope=row.rescale_slope,
+                    intercept=row.rescale_intercept,
+                ),
+                self._load_windowed_slice(
+                    row.next_slice_path,
+                    slope=row.rescale_slope,
+                    intercept=row.rescale_intercept,
+                ),
+            ]
+            x = np.stack(slices, axis=0)  # D, C, H, W
+            x = rearrange(x, "d c h w -> h w (d c)")
+            if self.transforms is not None:
+                x = self.transforms(image=x)["image"]
+            x = x.reshape(*x.shape[:2], self.depth, len(self.windows))
+            x = self._apply_random_flips(x)
+            if self.flatten_depth_to_channels:
+                x = x.transpose(2, 3, 0, 1).reshape(
+                    self.depth * len(self.windows),
+                    *x.shape[:2],
+                )
+            else:
+                x = x.transpose(3, 2, 0, 1)
         x = np.ascontiguousarray(x)
 
         y = row[self.label_columns].to_numpy(dtype=np.float32)

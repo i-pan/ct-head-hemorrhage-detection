@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections import defaultdict
+from itertools import combinations
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +36,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--summary-output", type=Path, default=DEFAULT_SUMMARY)
     parser.add_argument("--test-studies", type=int, default=1000)
+    parser.add_argument(
+        "--val-studies",
+        type=int,
+        default=0,
+        help=(
+            "If >0, sample this many eligible non-test studies and assign all "
+            "studies from their patients to a fixed validation split."
+        ),
+    )
     parser.add_argument("--num-folds", type=int, default=5)
     parser.add_argument("--seed", type=int, default=88)
     parser.add_argument(
@@ -163,12 +173,41 @@ def mark_bhsd_exclusions(
     return df
 
 
+def sample_patients_for_study_target(
+    study_to_patient: pd.DataFrame,
+    *,
+    target_studies: int,
+    rng: np.random.Generator,
+) -> set[str]:
+    """Sample patients so the final patient-level split is near target_studies."""
+    patient_study_counts = (
+        study_to_patient.groupby("patient_id")["study_id"].nunique().to_dict()
+    )
+    patients = np.array(sorted(patient_study_counts))
+    rng.shuffle(patients)
+
+    selected: set[str] = set()
+    total_studies = 0
+    for patient_id in patients:
+        count = int(patient_study_counts[patient_id])
+        if selected and total_studies >= target_studies:
+            break
+        if selected and abs(target_studies - total_studies) <= abs(
+            target_studies - (total_studies + count)
+        ):
+            break
+        selected.add(str(patient_id))
+        total_studies += count
+    return selected
+
+
 def assign_splits(
     df: pd.DataFrame,
     *,
     test_studies: int,
     num_folds: int,
     seed: int,
+    val_studies: int = 0,
 ) -> pd.DataFrame:
     if test_studies <= 0:
         raise ValueError("test_studies must be positive.")
@@ -201,10 +240,34 @@ def assign_splits(
 
     eligible_mask = ~df["excluded_bhsd"]
     test_mask = eligible_mask & df["patient_id"].isin(test_patients)
-    train_mask = eligible_mask & ~df["patient_id"].isin(test_patients)
+    train_val_mask = eligible_mask & ~df["patient_id"].isin(test_patients)
     df.loc[test_mask, "split"] = "test"
-    df.loc[train_mask, "split"] = "train"
+    df.loc[train_val_mask, "split"] = "train"
 
+    if val_studies > 0:
+        train_val_studies = (
+            df.loc[train_val_mask, ["study_id", "patient_id"]]
+            .drop_duplicates()
+            .reset_index(drop=True)
+        )
+        if len(train_val_studies) < val_studies:
+            raise ValueError(
+                f"Requested {val_studies} validation studies, but only "
+                f"{len(train_val_studies)} eligible non-test studies are available."
+            )
+        val_patients = sample_patients_for_study_target(
+            train_val_studies,
+            target_studies=val_studies,
+            rng=rng,
+        )
+        val_mask = train_val_mask & df["patient_id"].isin(val_patients)
+        df.loc[val_mask, "split"] = "val"
+        df["initial_val_study_sample"] = val_mask
+    else:
+        val_mask = pd.Series(False, index=df.index)
+        df["initial_val_study_sample"] = False
+
+    train_mask = train_val_mask & ~val_mask
     train_patients = np.array(sorted(df.loc[train_mask, "patient_id"].unique()))
     rng.shuffle(train_patients)
     patient_to_fold = {
@@ -218,11 +281,21 @@ def assign_splits(
 def validate_split(df: pd.DataFrame, num_folds: int) -> None:
     eligible = df.loc[~df["excluded_bhsd"]]
     train = eligible.loc[eligible["split"] == "train"]
+    val = eligible.loc[eligible["split"] == "val"]
     test = eligible.loc[eligible["split"] == "test"]
 
-    overlap = set(train["patient_id"]) & set(test["patient_id"])
-    if overlap:
-        raise ValueError(f"Patient leakage between train and test: {sorted(overlap)[:5]}")
+    split_patients = [
+        ("train", set(train["patient_id"])),
+        ("val", set(val["patient_id"])),
+        ("test", set(test["patient_id"])),
+    ]
+    for (split_a, patients_a), (split_b, patients_b) in combinations(split_patients, 2):
+        overlap = patients_a & patients_b
+        if overlap:
+            raise ValueError(
+                f"Patient leakage between {split_a} and {split_b}: "
+                f"{sorted(overlap)[:5]}"
+            )
 
     if set(train["fold"].dropna().astype(int).unique()) != set(range(num_folds)):
         raise ValueError("Training folds do not cover the expected fold IDs.")
@@ -242,7 +315,13 @@ def validate_split(df: pd.DataFrame, num_folds: int) -> None:
                 )
 
 
-def summarize(df: pd.DataFrame, *, test_studies: int, seed: int) -> dict:
+def summarize(
+    df: pd.DataFrame,
+    *,
+    test_studies: int,
+    val_studies: int,
+    seed: int,
+) -> dict:
     def counts(frame: pd.DataFrame) -> dict[str, int]:
         return {
             "slices": int(len(frame)),
@@ -254,12 +333,17 @@ def summarize(df: pd.DataFrame, *, test_studies: int, seed: int) -> dict:
     summary = {
         "seed": seed,
         "requested_initial_test_studies": test_studies,
+        "requested_initial_val_studies": val_studies,
         "all": counts(df),
         "excluded_bhsd": counts(df.loc[df["excluded_bhsd"]]),
         "train": counts(df.loc[df["split"] == "train"]),
+        "val": counts(df.loc[df["split"] == "val"]),
         "test": counts(df.loc[df["split"] == "test"]),
         "initial_test_study_sample_count": int(
             df.loc[df["initial_test_study_sample"], "study_id"].nunique()
+        ),
+        "initial_val_study_sample_count": int(
+            df.loc[df["initial_val_study_sample"], "study_id"].nunique()
         ),
         "folds": {},
     }
@@ -276,12 +360,18 @@ def main() -> None:
     df = assign_splits(
         df,
         test_studies=args.test_studies,
+        val_studies=args.val_studies,
         num_folds=args.num_folds,
         seed=args.seed,
     )
     validate_split(df, args.num_folds)
 
-    summary = summarize(df, test_studies=args.test_studies, seed=args.seed)
+    summary = summarize(
+        df,
+        test_studies=args.test_studies,
+        val_studies=args.val_studies,
+        seed=args.seed,
+    )
     summary["bhsd_matches"] = {key: len(value) for key, value in matches.items()}
 
     output_df = df

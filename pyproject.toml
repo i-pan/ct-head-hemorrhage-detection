@@ -30,6 +30,7 @@ train = [
 ]
 medical = [
     "monai>=1.4",
+    "nibabel>=5.2",
     "pydicom>=2.4",
 ]
 video = [

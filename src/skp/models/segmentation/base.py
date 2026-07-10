@@ -16,6 +16,7 @@ from typing import Dict, List, Union
 
 from skp.configs import Config
 from skp.models.segmentation import decoders
+from skp.models.normalization import normalize_input
 from skp.models.utils import torch_load_weights, filter_weights_by_prefix
 
 
@@ -175,39 +176,7 @@ class Net(nn.Module):
         return out
 
     def normalize(self, x):
-        if self.cfg.normalization == "-1_1":
-            mini, maxi = (
-                self.cfg.normalization_params["min"],
-                self.cfg.normalization_params["max"],
-            )
-            x = x - mini
-            x = x / (maxi - mini)
-            x = x - 0.5
-            x = x * 2.0
-        elif self.cfg.normalization == "0_1":
-            mini, maxi = (
-                self.cfg.normalization_params["min"],
-                self.cfg.normalization_params["max"],
-            )
-            x = x - mini
-            x = x / (maxi - mini)
-        elif self.cfg.normalization == "mean_sd":
-            mean, sd = (
-                self.cfg.normalization_params["mean"],
-                self.cfg.normalization_params["sd"],
-            )
-            x = (x - mean) / sd
-        elif self.cfg.normalization == "per_channel_mean_sd":
-            mean, sd = (
-                self.cfg.normalization_params["mean"],
-                self.cfg.normalization_params["sd"],
-            )
-            assert len(mean) == len(sd) == x.size(1)
-            shape = (1, x.size(1), *([1] * (x.ndim - 2)))
-            mean = x.new_tensor(mean).view(shape)
-            sd = x.new_tensor(sd).view(shape)
-            x = (x - mean) / sd
-        return x
+        return normalize_input(x, self.cfg)
 
     def load_pretrained_encoder(self) -> None:
         print(f"Loading pretrained encoder from {self.cfg.load_pretrained_encoder} ...")

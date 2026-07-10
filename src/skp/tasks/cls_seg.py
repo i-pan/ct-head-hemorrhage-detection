@@ -7,6 +7,14 @@ from skp.tasks.base import BaseTask
 
 
 class Task(BaseTask):
+    @staticmethod
+    def _should_log_value(key: str, value: torch.Tensor) -> bool:
+        if "loss" in key:
+            return True
+        if key.endswith(("fraction", "count")) and isinstance(value, torch.Tensor):
+            return value.ndim == 0
+        return False
+
     def mixup(self, batch: Dict) -> Dict:
         x, y = batch["x"], batch["y"]
         # ensure float tensors
@@ -29,9 +37,9 @@ class Task(BaseTask):
         if lamb.ndim < x.ndim:
             for _ in range(x.ndim - lamb.ndim):
                 lamb = lamb.unsqueeze(-1)
-        assert (
-            lamb.ndim == x.ndim
-        ), f"lamb has {lamb.ndim} dims whereas x has {x.ndim} dims"
+        assert lamb.ndim == x.ndim, (
+            f"lamb has {lamb.ndim} dims whereas x has {x.ndim} dims"
+        )
         # mixed input
         xmix = lamb * x + (1 - lamb) * x[permuted_indices]
         # replace original input and label with mixed
@@ -44,14 +52,14 @@ class Task(BaseTask):
             batch = self.mixup(batch)
         out = self.model(batch, return_loss=True)
         for k, v in out.items():
-            if "loss" in k:
+            if self._should_log_value(k, v):
                 self.log(k, v)
         return out["loss"]
 
     def validation_step(self, batch: Dict, batch_idx: int) -> torch.Tensor:
         out = self.model(batch, return_loss=True)
         for k, v in out.items():
-            if "loss" in k:
+            if self._should_log_value(k, v):
                 self.val_loss[k].append(v.detach().clone())
         for idx, m in enumerate(self.metrics):
             # passing output and input dicts is the most flexible

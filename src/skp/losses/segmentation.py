@@ -34,6 +34,7 @@ def _dice_loss(
     compute_method: str = "per_sample",
     generalized: bool = False,
     weight_type: str = "square",  # only if generalized=True
+    sample_weight: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     assert compute_method in {
         "per_sample",
@@ -71,11 +72,24 @@ def _dice_loss(
         else:
             raise ValueError(f"Expected 4D or 5D prediction tensor, got {x.ndim}D")
 
-    intersection = reduce(x * y, s, "sum")
+    flat_sample_weight = None
+    if sample_weight is not None:
+        flat_sample_weight = sample_weight.to(x.device).float().flatten()
+        view_shape = [flat_sample_weight.shape[0]] + [1] * (x.ndim - 1)
+        broadcast_sample_weight = flat_sample_weight.view(*view_shape)
+        weighted_intersection = x * y * broadcast_sample_weight
+        weighted_prediction = x.pow(pred_power) * broadcast_sample_weight
+        weighted_target = y * broadcast_sample_weight
+    else:
+        weighted_intersection = x * y
+        weighted_prediction = x.pow(pred_power)
+        weighted_target = y
 
-    x = reduce(x.pow(pred_power), s, "sum")
+    intersection = reduce(weighted_intersection, s, "sum")
+
+    x = reduce(weighted_prediction, s, "sum")
     # y is 0 or 1 so raising to pred_power does nothing
-    y = reduce(y, s, "sum")
+    y = reduce(weighted_target, s, "sum")
 
     denominator = x + y
 
@@ -101,6 +115,17 @@ def _dice_loss(
         dice_loss = dice_loss * class_weights
         dice_loss = reduce(dice_loss, "b c -> b", "sum")
         dice_loss = dice_loss / class_weights.sum()
+
+    if (
+        flat_sample_weight is not None
+        and compute_method == "per_sample"
+        and dice_loss.shape[0] == flat_sample_weight.shape[0]
+    ):
+        while flat_sample_weight.ndim < dice_loss.ndim:
+            flat_sample_weight = flat_sample_weight.unsqueeze(-1)
+        return (
+            dice_loss * flat_sample_weight
+        ).sum() / flat_sample_weight.sum().clamp_min(1e-6)
 
     return dice_loss.mean()
 
@@ -355,15 +380,129 @@ class DiceFocalLoss(DiceLoss):
     ) -> Dict[str, torch.Tensor]:
         p, t = self.get_inputs(out, batch)
         t = self.format_labels(p, t)
-        dice_loss = _dice_loss(p, t, **self.loss_args)
+        sample_weight = batch.get("sample_weight")
+        dice_loss = _dice_loss(p, t, sample_weight=sample_weight, **self.loss_args)
         focal_loss = _sigmoid_focal_loss(p, t, gamma=self.gamma, alpha=self.alpha)
         n, c = focal_loss.shape[:2]
         focal_loss = focal_loss.reshape(n, c, -1).mean(dim=2)
         if self.loss_args.get("class_weights", None) is not None:
             class_weights = self.loss_args["class_weights"].to(focal_loss.device)
             focal_loss = (focal_loss * class_weights).sum(1) / class_weights.sum()
-        focal_loss = focal_loss.mean() * self.scale
+        if sample_weight is not None:
+            sample_weight = sample_weight.to(focal_loss.device).float().flatten()
+            while sample_weight.ndim < focal_loss.ndim:
+                sample_weight = sample_weight.unsqueeze(-1)
+            focal_loss = (
+                focal_loss * sample_weight
+            ).sum() / sample_weight.sum().clamp_min(1e-6)
+        else:
+            focal_loss = focal_loss.mean()
+        focal_loss = focal_loss * self.scale
         loss_dict = {"dice_loss": dice_loss, "focal_loss": focal_loss}
+        loss_dict["loss"] = (
+            self.dice_weight * dice_loss + self.focal_weight * focal_loss
+        )
+        return loss_dict
+
+
+class PositiveDiceNegativeFocalLoss(DiceLoss):
+    """
+    Hybrid loss for heavily imbalanced segmentation with many empty masks.
+
+    Non-empty samples receive Dice + focal loss. Empty samples receive only focal
+    loss, usually with a small weight, so they discourage false positives without
+    dominating the segmentation objective. Set gamma=0 and alpha=None to recover
+    BCE-with-logits behavior for the focal term.
+    """
+
+    def __init__(self, params: Dict):
+        params = copy.deepcopy(params)
+        self.dice_weight = params.pop("dice_weight", 1.0)
+        self.focal_weight = params.pop("focal_weight", 1.0)
+        self.positive_focal_weight = params.pop("positive_focal_weight", 1.0)
+        self.negative_focal_weight = params.pop("negative_focal_weight", 0.05)
+        self.gamma = params.pop("gamma", 2.0)
+        self.alpha = params.pop("alpha", None)
+        self.scale = params.pop("scale", 1.0)
+        self.positive_key = params.pop("positive_key", None)
+        self.target_positive_threshold = params.pop("target_positive_threshold", 0.0)
+        super().__init__(params)
+        assert self.alpha is None or 0 < self.alpha < 1
+        if self.loss_args.get("compute_method") == "per_batch":
+            print(
+                "WARN: PositiveDiceNegativeFocalLoss is usually intended for",
+                "compute_method='per_sample'.",
+            )
+
+    def _positive_mask(
+        self, t: torch.Tensor, batch: Dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        if self.positive_key is not None and self.positive_key in batch:
+            return batch[self.positive_key].to(t.device).bool().flatten()
+        return t.flatten(1).sum(dim=1) > self.target_positive_threshold
+
+    def _focal_per_sample(self, p: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        focal_loss = _sigmoid_focal_loss(p, t, gamma=self.gamma, alpha=self.alpha)
+        n, c = focal_loss.shape[:2]
+        focal_loss = focal_loss.reshape(n, c, -1).mean(dim=2)
+        if self.loss_args.get("class_weights", None) is not None:
+            class_weights = self.loss_args["class_weights"].to(focal_loss.device)
+            focal_loss = (focal_loss * class_weights).sum(1) / class_weights.sum()
+        else:
+            focal_loss = focal_loss.mean(dim=1)
+        return focal_loss
+
+    def forward(
+        self,
+        out: Dict[str, Union[torch.Tensor, List[torch.Tensor]]],
+        batch: Dict[str, torch.Tensor],
+    ) -> Dict[str, torch.Tensor]:
+        p, t = self.get_inputs(out, batch)
+        t = self.format_labels(p, t)
+        positive_mask = self._positive_mask(t, batch)
+
+        if positive_mask.any():
+            dice_loss = _dice_loss(p[positive_mask], t[positive_mask], **self.loss_args)
+        else:
+            dice_loss = p.sum() * 0.0
+
+        focal_per_sample = self._focal_per_sample(p, t)
+        sample_weight = torch.where(
+            positive_mask.to(focal_per_sample.device),
+            torch.full_like(focal_per_sample, self.positive_focal_weight),
+            torch.full_like(focal_per_sample, self.negative_focal_weight),
+        )
+        if "sample_weight" in batch:
+            sample_weight = (
+                sample_weight
+                * batch["sample_weight"].to(focal_per_sample.device).float().flatten()
+            )
+        focal_loss = (
+            focal_per_sample * sample_weight
+        ).sum() / sample_weight.sum().clamp_min(1e-6)
+        focal_loss = focal_loss * self.scale
+
+        positive_count = positive_mask.sum().to(p.dtype)
+        negative_count = positive_mask.numel() - positive_count
+        positive_focal_loss = (
+            focal_per_sample[positive_mask].mean()
+            if positive_mask.any()
+            else p.sum() * 0.0
+        )
+        negative_focal_loss = (
+            focal_per_sample[~positive_mask].mean()
+            if (~positive_mask).any()
+            else p.sum() * 0.0
+        )
+
+        loss_dict = {
+            "dice_loss": dice_loss,
+            "focal_loss": focal_loss,
+            "positive_focal_loss": positive_focal_loss,
+            "negative_focal_loss": negative_focal_loss,
+            "positive_fraction": positive_count / max(positive_mask.numel(), 1),
+            "negative_count": negative_count,
+        }
         loss_dict["loss"] = (
             self.dice_weight * dice_loss + self.focal_weight * focal_loss
         )
@@ -537,7 +676,9 @@ class DeepSupervisionDiceBCELoss(nn.Module):
         class_weights = params.get("class_weights", None)
         if class_weights is not None:
             self.register_buffer(
-                "class_weights", torch.as_tensor(class_weights).float(), persistent=False
+                "class_weights",
+                torch.as_tensor(class_weights).float(),
+                persistent=False,
             )
         else:
             self.class_weights = None
@@ -558,16 +699,18 @@ class DeepSupervisionDiceBCELoss(nn.Module):
         # Identify available Deep Supervision keys in order: logits, logits_ds1, logits_ds2...
         ds_keys = ["logits"] + sorted(
             [k for k in out.keys() if k.startswith("logits_ds")],
-            key=lambda x: int(x.replace("logits_ds", ""))
-            if x.replace("logits_ds", "").isdigit()
-            else 999,
+            key=lambda x: (
+                int(x.replace("logits_ds", ""))
+                if x.replace("logits_ds", "").isdigit()
+                else 999
+            ),
         )
 
         # Validate weights (for training)
         if self.ds_weights is not None and mode == "train":
-            assert (
-                len(self.ds_weights) == len(ds_keys)
-            ), f"Number of ds_weights ({len(self.ds_weights)}) must match number of outputs ({len(ds_keys)})."
+            assert len(self.ds_weights) == len(ds_keys), (
+                f"Number of ds_weights ({len(self.ds_weights)}) must match number of outputs ({len(ds_keys)})."
+            )
             weights = self.ds_weights
         else:
             # Default to 1.0 for main, 0.0 for others if not specified (or 1.0 for all, usually strictly specified)
