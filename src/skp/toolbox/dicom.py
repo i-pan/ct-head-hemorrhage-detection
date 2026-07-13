@@ -96,6 +96,7 @@ def load_dicom_series(
     backend: str = "pydicom",
     sort_by_instance: bool = False,
     rescale_pixel_values: bool = True,
+    require_rescale_values: bool = False,
     fix_unequal_shapes_method: str = "crop_pad",
     max_workers: int | None = None,
     orientation: str | None = None,
@@ -136,6 +137,17 @@ def load_dicom_series(
 
     valid_slices, invalid_files = _filter_valid_slices(metadata_list, invalid_files)
     valid_slices = _sort_and_dedupe_slices(valid_slices, invalid_files, sort_by_instance)
+    rescale_values_present = [
+        meta["RescaleSlope"] is not None and meta["RescaleIntercept"] is not None
+        for meta in valid_slices
+    ]
+    if rescale_pixel_values and require_rescale_values and not all(rescale_values_present):
+        missing = sum(not present for present in rescale_values_present)
+        raise ValueError(
+            f"{missing}/{len(valid_slices)} DICOM slices are missing RescaleSlope "
+            "or RescaleIntercept; stored pixel values cannot be safely interpreted "
+            "as Hounsfield units."
+        )
 
     target_shape = Counter((m["Rows"], m["Columns"]) for m in valid_slices).most_common(1)[0][0]
     worker_args = [
@@ -162,6 +174,25 @@ def load_dicom_series(
         "orientation_code": final_code,
         "modality": valid_slices[0]["Modality"],
         "image_position_patient": all_ipps,
+        "rescale_slope": np.asarray(
+            [
+                float(meta["RescaleSlope"])
+                if meta["RescaleSlope"] is not None
+                else np.nan
+                for meta in valid_slices
+            ],
+            dtype=np.float32,
+        ),
+        "rescale_intercept": np.asarray(
+            [
+                float(meta["RescaleIntercept"])
+                if meta["RescaleIntercept"] is not None
+                else np.nan
+                for meta in valid_slices
+            ],
+            dtype=np.float32,
+        ),
+        "rescale_values_present": np.asarray(rescale_values_present, dtype=bool),
         "sorted_files": [m["path"] for m in valid_slices],
         "invalid_files": invalid_files,
     }
