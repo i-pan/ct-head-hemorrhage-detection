@@ -35,7 +35,15 @@ class Net(nn.Module):
         if self.cfg.get("load_pretrained_classifier_head"):
             self.load_pretrained_classifier_head()
 
+        if self.cfg.get("freeze_classifier", False):
+            print("Freezing classifier ...")
+            self.freeze_classifier()
+
         self.criterion = None
+
+    def freeze_classifier(self) -> None:
+        for param in self.classifier.parameters():
+            param.requires_grad = False
 
     def load_pretrained_classifier_head(self) -> None:
         print(
@@ -53,11 +61,18 @@ class Net(nn.Module):
         batch: Dict[str, torch.Tensor],
         return_loss: bool = False,
         return_features: bool = False,
+        return_seg: bool = True,
     ) -> Dict[str, Union[torch.Tensor, List[torch.Tensor]]]:
-        seg_out = self.segmenter(batch["seg"], return_loss=False, return_features=True)
-        features = seg_out["features"] if return_features else seg_out.pop("features")
         out = {}
-        out["seg"] = seg_out
+        if return_seg:
+            seg_out = self.segmenter(batch["seg"], return_loss=False, return_features=True)
+            features = seg_out["features"] if return_features else seg_out.pop("features")
+            out["seg"] = seg_out
+        else:
+            x = self.segmenter.normalize(batch["seg"]["x"])
+            features = self.segmenter.encoder(x)
+            if return_features:
+                out["features"] = features
         out["cls"] = {"logits": self.classifier(features[-1])}
 
         if return_loss:

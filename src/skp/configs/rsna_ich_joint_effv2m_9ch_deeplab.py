@@ -113,13 +113,9 @@ cfg.scheduler = "LinearWarmupCosineAnnealingLR"
 cfg.scheduler_params = {"pct_start": 0.05, "init_lr": 0.0, "final_lr": 1e-6}
 cfg.scheduler_interval = "step"
 
-cfg.metrics = [
-    "ich.SliceAUROC",
-    "ich.SeriesAUROC",
-    "segmentation.MultilabelDiceScore",
-]
+cfg.validate_classification_only = True
+cfg.metrics = ["ich.SliceAUROC", "ich.SeriesAUROC"]
 cfg.metric_activation_fn = "sigmoid"
-cfg.metric_thresholds = [0.3, 0.4, 0.5, 0.6, 0.7]
 cfg.series_metric_aggregations = ["max", "mean", "top3_mean"]
 cfg.val_metric = "auc_any"
 cfg.val_track = "max"

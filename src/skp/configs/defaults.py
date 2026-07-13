@@ -7,6 +7,7 @@ CONFIG_FIELD_DOCS = {
         "project": "Required MLflow experiment name. Set explicitly in each experiment config.",
         "mlflow_tracking_uri": "Optional MLflow tracking URI. If None, MLflow uses its environment/default behavior.",
         "debug": "Boolean flag set by --debug; intended for configs/datasets to reduce work during quick checks.",
+        "seed": "Global random seed used by Python, NumPy, PyTorch, and DataLoader workers.",
         "float32_matmul_precision": "Value passed to torch.set_float32_matmul_precision.",
         "save_top_k": "Number of best checkpoints to keep according to val_metric.",
         "save_weights_only": "If True, checkpoint only model weights instead of full training state.",
@@ -85,6 +86,7 @@ def runtime_defaults(cfg: Config) -> Config:
     cfg.save_dir = "./experiments"
     cfg.mlflow_tracking_uri = None
     cfg.debug = False
+    cfg.seed = 88
     cfg.float32_matmul_precision = "high"
     cfg.save_top_k = 1
     cfg.save_weights_only = False

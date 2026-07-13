@@ -80,3 +80,9 @@ This file tracks shared project decisions as SKPv2 is cleaned up into a reusable
   experiments easier to scan without opening run details.
 - CUDA training now defaults to `--devices -1`, resolving to all visible CUDA
   devices during trainer validation before Lightning trainer construction.
+
+## 2026-07-13
+
+- Added `cfg.seed = 88` to runtime defaults and seed Python, NumPy, PyTorch, and
+  DataLoader workers before constructing datasets and models. Controlled model
+  comparisons must not depend on implicit process RNG state.

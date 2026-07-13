@@ -83,17 +83,27 @@ class BaseTask(lightning.LightningModule):
         ):
             return
 
+        scalar_metrics = {}
         for key, value in metrics.items():
-            if isinstance(self.logger, MLFlowLogger):
-                self.log(
-                    f"val/{key}",
-                    torch.as_tensor(value, device=self.device),
-                    sync_dist=True,
-                )
+            if isinstance(value, torch.Tensor):
+                value = value.detach().cpu().item()
+            scalar_metrics[f"val/{key}"] = float(value)
+
+        if isinstance(self.logger, MLFlowLogger):
+            if self.global_rank == 0:
+                self.logger.log_metrics(scalar_metrics, step=self.global_step)
+        else:
+            for key, value in scalar_metrics.items():
+                self.log(key, value, sync_dist=False)
+
+        # Custom metrics already gather validation predictions across ranks before
+        # compute(), so another Lightning sync here can deadlock during epoch
+        # teardown. Log on every rank without sync so callbacks can see val_metric.
         self.log(
             "val_metric",
-            torch.as_tensor(metrics["val_metric"], device=self.device),
-            sync_dist=True,
+            float(metrics["val_metric"]),
+            sync_dist=False,
+            logger=False,
         )
 
     def configure_optimizers(self) -> Dict:

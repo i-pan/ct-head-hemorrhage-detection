@@ -101,6 +101,9 @@ class Dataset(TorchDataset):
 
         df = self._load_annotations()
         df = self._filter_mode(df, mode).reset_index(drop=True)
+        if mode == "train" and cfg.get("train_positive_series_only", False):
+            positive_series = df.groupby("series_uid")["any"].transform("max") > 0
+            df = df.loc[positive_series].reset_index(drop=True)
         if df.empty:
             raise ValueError(f"No rows selected for mode={mode!r}.")
 

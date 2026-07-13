@@ -50,6 +50,7 @@ def parse_args():
     parser.add_argument("config", type=str)
     parser.add_argument("--kfold", type=str)
     parser.add_argument("--run_id", type=str)
+    parser.add_argument("--ckpt_path", type=str, default=None)
     parser.add_argument("--overwrite_run", action="store_true")
     parser.add_argument("--double_cv", type=int, default=None)
     parser.add_argument("--debug", action="store_true")
@@ -324,7 +325,7 @@ def create_save_dirs(save_dir: str, overwrite: bool = False) -> None:
 
 def get_trainer(cfg: Config) -> Tuple[lightning.Trainer, Config]:
     save_dir = os.path.join(cfg.save_dir, get_split_save_name(cfg))
-    create_save_dirs(save_dir, overwrite=cfg.overwrite_run)
+    create_save_dirs(save_dir, overwrite=cfg.overwrite_run or bool(cfg.get("ckpt_path")))
     callbacks = []
     if cfg.get("ema") and cfg.ema["on"]:
         _print_rank_zero("\n>> Using EMA ...\n")
@@ -649,6 +650,7 @@ def main():
     kfold = args.__dict__.pop("kfold")
 
     cfg = load_config(args, overwrite_args)
+    lightning.seed_everything(cfg.get("seed", 88), workers=True)
     cfg.overwrite_run = args.__dict__.pop("overwrite_run")
     cfg.double_cv = args.__dict__.pop("double_cv")
     cfg.world_size = args.num_nodes * (args.devices if args.devices else 1)
@@ -682,6 +684,7 @@ def main():
         cfg.args["limit_val_batches"] = 0
 
     cfg = generate_experiment_save_dir(cfg, run_id=args.__dict__.pop("run_id"))
+    cfg.ckpt_path = args.__dict__.pop("ckpt_path")
     print_environment(cfg, args)
 
     torch.set_float32_matmul_precision(cfg.get("float32_matmul_precision", "high") or "high")
@@ -732,7 +735,7 @@ def main():
             cfg, compile_model=compile_model, compile_mode=compile_mode
         )
         trainer, cfg = get_trainer(cfg)
-        trainer.fit(task)
+        trainer.fit(task, ckpt_path=cfg.get("ckpt_path"))
         after_fit(trainer)
 
         if (

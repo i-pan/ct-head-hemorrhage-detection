@@ -12,6 +12,7 @@ from skp.losses.ich import WeightedBCEWithLogitsLoss
 from skp.metrics.ich import SeriesAUROC, SliceAUROC
 from skp.models.normalization import normalize_input
 from skp.models.classification.efficientnet3d_stem import Conv3dTo2dStem, Net
+from skp.models.segmentation.unet_cls import Net as JointSegClsNet
 
 
 LABEL_COLUMNS = [
@@ -137,6 +138,23 @@ def test_rsna_ich_dataset_filters_modes_and_builds_2p5d_input(tmp_path):
     assert torch.allclose(brain_window_middle, torch.zeros(4, 4))
     next_sample = val[1]
     assert torch.allclose(next_sample["x"][0, 1], torch.full((4, 4), 0.5))
+
+
+def test_rsna_ich_dataset_can_train_on_positive_series_only(tmp_path):
+    cfg = _dataset_cfg(tmp_path)
+    splits = pd.read_csv(cfg.annotations_file)
+    labels = pd.read_csv(cfg.labels_file)
+
+    splits.loc[splits["patient_id"] == "p2", ["split", "fold"]] = ["train", 1]
+    labels.loc[labels["patient_ID"] == "p2", LABEL_COLUMNS] = 0
+    splits.to_csv(cfg.annotations_file, index=False)
+    labels.to_csv(cfg.labels_file, index=False)
+
+    cfg.train_positive_series_only = True
+    train = Dataset(cfg, "train")
+
+    assert train.df["patient_id"].unique().tolist() == ["p1"]
+    assert len(train) == 3
 
 
 def test_slice_sort_key_uses_natural_numeric_ordering():
@@ -334,3 +352,106 @@ def test_efficientnet_3d_stem_model_forward_shape():
     out = model({"x": torch.rand(2, 3, 3, 64, 64)})
 
     assert out["logits"].shape == (2, 6)
+
+
+def test_joint_seg_cls_model_can_skip_segmentation_output_for_validation():
+    cfg = Config(
+        backbone="tf_efficientnetv2_b0",
+        pretrained=False,
+        num_input_channels=9,
+        image_height=64,
+        image_width=64,
+        num_classes=6,
+        cls_num_classes=6,
+        decoder_type="DeepLabV3PlusDecoder",
+        decoder_out_channels=64,
+        decoder_norm_layer="bn",
+        decoder_act_layer="relu",
+        decoder_attention_type=None,
+        decoder_center_block=False,
+        use_psp=False,
+        aspp_separable=True,
+        aspp_dropout=0.0,
+        atrous_rates=(6, 12, 18),
+        seg_dropout=0.0,
+        cls_dropout=0.2,
+        pool="avg",
+        pool_params=None,
+        normalization="linear",
+        normalization_params={
+            "input_min": 0.0,
+            "input_max": 1.0,
+            "output_min": -1.0,
+            "output_max": 1.0,
+        },
+        backbone_img_size=False,
+        enable_gradient_checkpointing=False,
+        deep_supervision=False,
+        output_size=None,
+        load_pretrained_encoder=None,
+        load_pretrained_decoder=None,
+        load_pretrained_model=None,
+        load_pretrained_segmenter=None,
+        load_pretrained_classifier_head=None,
+        freeze_classifier=False,
+        freeze_encoder=False,
+        freeze_decoder=False,
+    )
+    model = JointSegClsNet(cfg)
+    batch = {"seg": {"x": torch.rand(2, 9, 64, 64)}}
+
+    out = model(batch, return_loss=False, return_seg=False)
+
+    assert "seg" not in out
+    assert out["cls"]["logits"].shape == (2, 6)
+
+
+def test_joint_seg_cls_model_can_freeze_classifier_and_encoder():
+    cfg = Config(
+        backbone="tf_efficientnetv2_b0",
+        pretrained=False,
+        num_input_channels=9,
+        image_height=64,
+        image_width=64,
+        num_classes=6,
+        cls_num_classes=6,
+        decoder_type="DeepLabV3PlusDecoder",
+        decoder_out_channels=64,
+        decoder_norm_layer="bn",
+        decoder_act_layer="relu",
+        decoder_attention_type=None,
+        decoder_center_block=False,
+        use_psp=False,
+        aspp_separable=True,
+        aspp_dropout=0.0,
+        atrous_rates=(6, 12, 18),
+        seg_dropout=0.0,
+        cls_dropout=0.2,
+        pool="avg",
+        pool_params=None,
+        normalization="linear",
+        normalization_params={
+            "input_min": 0.0,
+            "input_max": 1.0,
+            "output_min": -1.0,
+            "output_max": 1.0,
+        },
+        backbone_img_size=False,
+        enable_gradient_checkpointing=False,
+        deep_supervision=False,
+        output_size=None,
+        load_pretrained_encoder=None,
+        load_pretrained_decoder=None,
+        load_pretrained_model=None,
+        load_pretrained_segmenter=None,
+        load_pretrained_classifier_head=None,
+        freeze_classifier=True,
+        freeze_encoder=True,
+        freeze_decoder=False,
+    )
+    model = JointSegClsNet(cfg)
+
+    assert not any(p.requires_grad for p in model.segmenter.encoder.parameters())
+    assert not any(p.requires_grad for p in model.classifier.parameters())
+    assert all(p.requires_grad for p in model.segmenter.decoder.parameters())
+    assert all(p.requires_grad for p in model.segmenter.segmentation_head.parameters())

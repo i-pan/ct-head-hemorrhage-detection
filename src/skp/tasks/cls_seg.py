@@ -57,15 +57,22 @@ class Task(BaseTask):
         return out["loss"]
 
     def validation_step(self, batch: Dict, batch_idx: int) -> torch.Tensor:
-        out = self.model(batch, return_loss=True)
+        classification_only = self.cfg.get("validate_classification_only", False)
+        out = self.model(
+            batch,
+            return_loss=not classification_only,
+            return_seg=not classification_only,
+        )
         for k, v in out.items():
             if self._should_log_value(k, v):
                 self.val_loss[k].append(v.detach().clone())
         for idx, m in enumerate(self.metrics):
             # passing output and input dicts is the most flexible
             # then the metric can be customized to get the keys they need
-            if self.cfg.metrics[idx].startswith("segmentation."):
+            if self.cfg.metrics[idx].startswith(("segmentation.", "bhsd.")):
                 m.update(out["seg"], batch["seg"])
             else:
                 m.update(out["cls"], batch["cls"])
+        if classification_only:
+            return out["cls"]["logits"].new_zeros(())
         return out["loss"]
