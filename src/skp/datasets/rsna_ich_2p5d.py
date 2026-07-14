@@ -80,6 +80,9 @@ class Dataset(TorchDataset):
         self.collate_fn = get_collate_fn(mode)
         self.label_columns = cfg.get("label_columns") or DEFAULT_LABEL_COLUMNS
         self.image_size = (cfg.image_height, cfg.image_width)
+        self.large_image_resize_threshold = int(
+            cfg.get("large_image_resize_threshold", 640) or 640
+        )
         self.windows = cfg.get("ct_windows") or [
             (40, 80),
             (80, 200),
@@ -97,7 +100,9 @@ class Dataset(TorchDataset):
         self.horizontal_flip_p = (
             cfg.get("horizontal_flip_p", 0.0) if mode == "train" else 0.0
         )
-        self.vertical_flip_p = cfg.get("vertical_flip_p", 0.0) if mode == "train" else 0.0
+        self.vertical_flip_p = (
+            cfg.get("vertical_flip_p", 0.0) if mode == "train" else 0.0
+        )
 
         df = self._load_annotations()
         df = self._filter_mode(df, mode).reset_index(drop=True)
@@ -109,7 +114,8 @@ class Dataset(TorchDataset):
 
         self.df = df
         self.series_index = {
-            series_uid: idx for idx, series_uid in enumerate(sorted(df["series_uid"].unique()))
+            series_uid: idx
+            for idx, series_uid in enumerate(sorted(df["series_uid"].unique()))
         }
 
     def _load_annotations(self) -> pd.DataFrame:
@@ -129,7 +135,13 @@ class Dataset(TorchDataset):
             }
         )
         labels = _stringify_identifiers(labels)
-        label_cols = ["patient_id", "study_id", "series_id", "filename", *self.label_columns]
+        label_cols = [
+            "patient_id",
+            "study_id",
+            "series_id",
+            "filename",
+            *self.label_columns,
+        ]
         labels = labels[label_cols]
 
         rescale = pd.read_csv(self.cfg.rescale_file)
@@ -194,9 +206,20 @@ class Dataset(TorchDataset):
         if image is None:
             raise FileNotFoundError(f"Could not read image: {path}")
         if image.ndim != 2:
-            raise ValueError(f"Expected a 2D grayscale image, got {image.shape}: {path}")
+            raise ValueError(
+                f"Expected a 2D grayscale image, got {image.shape}: {path}"
+            )
 
-        if image.shape != self.image_size:
+        if any(
+            dimension > self.large_image_resize_threshold
+            for dimension in image.shape[:2]
+        ):
+            image = cv2.resize(
+                image.astype(np.float32),
+                (self.image_size[1], self.image_size[0]),
+                interpolation=cv2.INTER_AREA,
+            )
+        elif image.shape != self.image_size:
             image = center_crop_or_pad_borders(image, self.image_size, pad_val=0)
 
         hu = image.astype(np.float32)

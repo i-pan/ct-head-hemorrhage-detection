@@ -81,6 +81,7 @@ def make_cfg() -> Config:
 
     cfg.image_height = 512
     cfg.image_width = 512
+    cfg.large_image_resize_threshold = 640
     cfg.horizontal_flip_p = 0.25
     cfg.vertical_flip_p = 0.25
 

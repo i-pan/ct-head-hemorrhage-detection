@@ -204,6 +204,29 @@ def test_rsna_ich_dataset_can_emit_single_windowed_slice(tmp_path):
     assert torch.allclose(sample["x"][0], torch.full((4, 4), 0.5))
 
 
+def test_rsna_ich_dataset_resizes_large_images_instead_of_center_cropping(tmp_path):
+    cfg = _dataset_cfg(tmp_path)
+    cfg.num_slices = 1
+    cfg.large_image_resize_threshold = 640
+    dataset = Dataset(cfg, "val")
+    path = dataset.df.iloc[1].slice_path
+    image = np.full((1024, 1024), 100, dtype=np.uint16)
+    image[:256] = 180
+    image[-256:] = 180
+    image[:, :256] = 180
+    image[:, -256:] = 180
+    assert cv2.imwrite(str(dataset.cfg.data_dir + "/" + path), image)
+
+    brain_window = dataset[1]["x"][0]
+
+    assert brain_window.shape == (4, 4)
+    assert brain_window[0].mean() > 0.5
+    assert brain_window[-1].mean() > 0.5
+    assert brain_window[:, 0].mean() > 0.5
+    assert brain_window[:, -1].mean() > 0.5
+    assert brain_window[1:3, 1:3].mean() < 0.1
+
+
 def test_rsna_ich_dataset_can_flatten_2p5d_slices_to_channels(tmp_path):
     cfg = _dataset_cfg(tmp_path)
     cfg.num_slices = 3
