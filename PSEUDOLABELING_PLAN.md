@@ -242,6 +242,15 @@ pretraining helped.
 | Pseudolabel pretraining | Classification checkpoint | RSNA pseudolabel-trained | Frozen | Primary test of whether the second pseudolabel stage helps |
 | Pseudolabel upper bound | Classification checkpoint | RSNA pseudolabel-trained | Fine-tuned at 0.1x decoder LR | Measures available segmentation gain if encoder drift is allowed |
 
+The original frozen-encoder runs froze encoder gradients but did not keep the
+encoder in evaluation mode. Consequently, BatchNorm running statistics changed
+during both RSNA pseudolabel pretraining and BHSD training. The corrected
+deployment experiment loads the pseudolabel-trained decoder and segmentation
+head, overwrites the encoder parameters and buffers from the original
+classification checkpoint, and keeps the encoder in evaluation mode throughout
+BHSD training. This permits one canonical encoder pass to be shared by the
+classifier and all five segmentation decoders at inference.
+
 For the fine-tuned upper bound, use encoder LR `3e-5` and decoder/head LR
 `3e-4`. For both frozen conditions, use decoder/head LR `3e-4`.
 
@@ -265,21 +274,26 @@ heatmap is displayed; the segmentation decoder supplies localization only.
 
 ### Final second-stage segmentation result
 
-The five-fold BHSD comparison completed with the following best-observed
-metrics, averaged across folds:
+The deployable experiment restores the canonical classifier encoder after
+loading the pseudolabel-trained model, freezes its parameters, and keeps all
+encoder modules in evaluation mode. Every encoder parameter and buffer in all
+five final checkpoints was verified tensor-for-tensor against the classifier.
 
-| Condition | Volume Dice any | Slice Dice any | Volume HD95 any |
-| --- | ---: | ---: | ---: |
-| Direct BHSD, frozen encoder | 0.5945 | 0.4254 | 31.01 |
-| Pseudolabel initialization, full fine-tuning | 0.6920 | 0.5350 | 26.87 |
-| Pseudolabel initialization, frozen encoder | 0.6875 | 0.5307 | 25.28 |
+The corrected fold checkpoint monitor values for volume Dice `any` were
+`0.6163`, `0.6176`, `0.6109`, `0.6275`, and `0.7072` (mean `0.6359`). A separate
+evaluation of the released `last.ckpt` files gave mean volume Dice-any `0.6333`,
+slice Dice-any `0.5288`, volume HD95-any `34.85 mm`, and slice HD95-any
+`96.17 mm`. Dice used a per-fold threshold sweep from 0.1 to 0.9; the quoted
+HD95 values use threshold 0.5, and empty/empty slice pairs are excluded from
+the slice metrics.
 
-The pseudolabel-initialized frozen encoder is the selected deployment path. It
-retains the classification encoder exactly while coming within 0.005 Dice of
-full fine-tuning. These results demonstrate a useful optimization/localization
-prior, but they are not unbiased generalization estimates: the pseudolabel
-teacher ensemble was derived from BHSD folds, creating an indirect information
-path back to BHSD validation patients.
+The prior `0.6875` frozen-gradient volume Dice summary mixed pre-training sanity
+validation with trained epochs and must not be used as a checkpoint result.
+The old run also allowed BatchNorm state to drift despite frozen gradients. The
+corrected frozen-state result is the only result used for the deployable
+five-decoder ensemble. It remains a biased estimate: the pseudolabel teacher
+ensemble was derived from BHSD folds, creating an indirect information path
+back to BHSD validation patients.
 
 Do not run another pseudolabel-generation cycle with the improved student under
 the current evaluation design. A further cycle would compound this indirect
@@ -544,6 +558,34 @@ test set.
    permits.
 
 ### Sequence Modeling
+
+The image encoder used for sequence modeling is already a true frozen-state
+encoder: feature extraction loads the original classification checkpoint,
+calls `eval()`, and runs under `torch.inference_mode()`. Sequence training uses
+only the resulting fixed 1,280-dimensional arrays. Therefore any number of
+sequence heads can share the same single encoder pass at deployment.
+
+Run a validation-only architecture/ensemble comparison using the selected loss
+weights and all other established settings. Compare three seeds each of the
+two-layer BiGRU, a two-layer BiLSTM with the same hidden width, and a two-layer
+Transformer encoder with model width 512, eight attention heads, feed-forward
+width 1,024, pre-norm, GELU, and dropout 0.2. Average logits when ensembling.
+Evaluate each individual head, each three-seed architecture ensemble, and the
+nine-head cross-architecture ensemble. Select using only the fixed validation
+split; do not inspect the existing heldout test again. Any claimed improvement
+requires a new external or prospective test set.
+
+Record validation regressions as well as improvements. For every candidate,
+report raw contextual and blended slice and series AUC for all six labels,
+`any`, and the six-class mean; deltas versus the original classifier; deltas
+versus the selected seed-88 BiGRU; the number of classes that regress; and the
+worst per-class delta. Raw contextual regressions must remain visible because
+validation-optimized blending includes classifier-only (`alpha=0`) and can
+therefore hide a weak contextual class by construction. Review seed consistency
+and all regression columns before freezing a candidate. Do not automatically
+evaluate the winner on the existing test set.
+That test has already been observed for the current model, so strict unbiased
+confirmation of a replacement requires new external or prospective data.
 
 1. **Contiguous truncation augmentation.** During training only, truncate about
    30% of series to a contiguous 60-100% of their original length, with at

@@ -19,7 +19,12 @@ cfg.load_pretrained_model = (
     "experiments/rsna_ich_joint_effv2m_9ch_deeplab_frozen/"
     "frozen_decoder_positive_series_20260712/fold0/checkpoints/last.ckpt"
 )
+cfg.load_pretrained_encoder = (
+    "experiments/rsna_ich_effv2m_fixedval_9ch/"
+    "definite-crayfish-7226/fold0/checkpoints/last.ckpt"
+)
 cfg.freeze_encoder = True
+cfg.frozen_encoder_eval = True
 cfg.parameter_groups = None
 
 cfg.num_workers = 4

@@ -48,16 +48,42 @@ class Net(nn.Module):
         self.feature_dropout = nn.Dropout(cfg.feature_dropout)
         self.feature_noise_std = float(cfg.feature_noise_std)
         self.slice_dropout_p = float(cfg.slice_feature_dropout)
-
-        self.sequence = nn.GRU(
-            input_size=cfg.sequence_projection_dim + 1,
-            hidden_size=cfg.sequence_hidden_dim,
-            num_layers=cfg.sequence_num_layers,
-            batch_first=True,
-            bidirectional=True,
-            dropout=cfg.sequence_dropout if cfg.sequence_num_layers > 1 else 0.0,
-        )
-        contextual_dim = cfg.sequence_hidden_dim * 2
+        self.sequence_architecture = cfg.get("sequence_architecture", "gru").lower()
+        if self.sequence_architecture in {"gru", "lstm"}:
+            recurrent_cls = nn.GRU if self.sequence_architecture == "gru" else nn.LSTM
+            self.sequence = recurrent_cls(
+                input_size=cfg.sequence_projection_dim + 1,
+                hidden_size=cfg.sequence_hidden_dim,
+                num_layers=cfg.sequence_num_layers,
+                batch_first=True,
+                bidirectional=True,
+                dropout=cfg.sequence_dropout if cfg.sequence_num_layers > 1 else 0.0,
+            )
+            self.position_projection = None
+            contextual_dim = cfg.sequence_hidden_dim * 2
+        elif self.sequence_architecture == "transformer":
+            self.position_projection = nn.Linear(1, cfg.sequence_projection_dim)
+            encoder_layer = nn.TransformerEncoderLayer(
+                d_model=cfg.sequence_projection_dim,
+                nhead=cfg.transformer_num_heads,
+                dim_feedforward=cfg.transformer_feedforward_dim,
+                dropout=cfg.sequence_dropout,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            )
+            self.sequence = nn.TransformerEncoder(
+                encoder_layer,
+                num_layers=cfg.sequence_num_layers,
+                norm=nn.LayerNorm(cfg.sequence_projection_dim),
+                enable_nested_tensor=False,
+            )
+            contextual_dim = cfg.sequence_projection_dim
+        else:
+            raise ValueError(
+                "sequence_architecture must be one of: gru, lstm, transformer; "
+                f"got {self.sequence_architecture!r}"
+            )
         self.head_dropout = nn.Dropout(cfg.dropout)
         self.slice_head = nn.Linear(contextual_dim, self.num_classes)
         self.sequence_pool = ClassAttentionPool(
@@ -94,19 +120,25 @@ class Net(nn.Module):
         features = self._augment_features(features, valid_mask)
 
         position = batch["position"].float().unsqueeze(-1)
-        sequence_input = torch.cat([features, position], dim=-1)
-        packed = pack_padded_sequence(
-            sequence_input,
-            lengths.cpu(),
-            batch_first=True,
-            enforce_sorted=False,
-        )
-        packed_output, _ = self.sequence(packed)
-        contextual, _ = pad_packed_sequence(
-            packed_output,
-            batch_first=True,
-            total_length=sequence_input.shape[1],
-        )
+        if self.sequence_architecture == "transformer":
+            sequence_input = features + self.position_projection(position)
+            contextual = self.sequence(
+                sequence_input, src_key_padding_mask=~valid_mask
+            )
+        else:
+            sequence_input = torch.cat([features, position], dim=-1)
+            packed = pack_padded_sequence(
+                sequence_input,
+                lengths.cpu(),
+                batch_first=True,
+                enforce_sorted=False,
+            )
+            packed_output, _ = self.sequence(packed)
+            contextual, _ = pad_packed_sequence(
+                packed_output,
+                batch_first=True,
+                total_length=sequence_input.shape[1],
+            )
         slice_logits = self.slice_head(self.head_dropout(contextual))
         series_logits, sequence_attention = self.sequence_pool(
             contextual, valid_mask

@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
+import pytest
 
 from skp.configs import Config
 from skp.datasets.ich_sequence_features import Dataset
@@ -49,6 +50,9 @@ def model_cfg() -> Config:
     cfg.sequence_hidden_dim = 3
     cfg.sequence_num_layers = 2
     cfg.sequence_dropout = 0.2
+    cfg.sequence_architecture = "gru"
+    cfg.transformer_num_heads = 2
+    cfg.transformer_feedforward_dim = 12
     cfg.attention_dim = 4
     cfg.num_classes = 2
     cfg.dropout = 0.1
@@ -81,14 +85,17 @@ def test_restore_predictions_uses_nearest_sample():
     assert restored[:, 0].tolist() == [0.0, 0.0, 2.0, 2.0, 5.0, 5.0]
 
 
-def test_model_masks_padding_and_loss_is_finite(tmp_path):
+@pytest.mark.parametrize("architecture", ["gru", "lstm", "transformer"])
+def test_model_masks_padding_and_loss_is_finite(tmp_path, architecture):
     make_feature_store(tmp_path)
     dataset = Dataset(dataset_cfg(tmp_path), "val")
     batch = {
         key: torch.stack([dataset[0][key], dataset[1][key]])
         for key in dataset[0]
     }
-    model = Net(model_cfg())
+    cfg = model_cfg()
+    cfg.sequence_architecture = architecture
+    model = Net(cfg)
     criterion = SequenceClassificationLoss(
         {
             "class_names": ["subtype", "any"],

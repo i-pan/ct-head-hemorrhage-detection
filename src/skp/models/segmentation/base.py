@@ -117,14 +117,17 @@ class Net(nn.Module):
                 if hasattr(module, "inplace"):
                     module.inplace = False
 
+        if self.cfg.get("load_pretrained_model"):
+            self.load_pretrained_model()
+
+        # Explicit component checkpoints override the corresponding part of a
+        # full-model checkpoint. This supports reusing a trained decoder while
+        # restoring a canonical shared encoder state.
         if self.cfg.get("load_pretrained_encoder"):
             self.load_pretrained_encoder()
 
         if self.cfg.get("load_pretrained_decoder"):
             self.load_pretrained_decoder()
-
-        if self.cfg.get("load_pretrained_model"):
-            self.load_pretrained_model()
 
         if self.cfg.get("freeze_encoder", False):
             print("Freezing encoder ...")
@@ -177,6 +180,14 @@ class Net(nn.Module):
 
     def normalize(self, x):
         return normalize_input(x, self.cfg)
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        if self.cfg.get("freeze_encoder", False) and self.cfg.get(
+            "frozen_encoder_eval", False
+        ):
+            self.encoder.eval()
+        return self
 
     def load_pretrained_encoder(self) -> None:
         print(f"Loading pretrained encoder from {self.cfg.load_pretrained_encoder} ...")
@@ -283,6 +294,8 @@ class Net(nn.Module):
     def freeze_encoder(self) -> None:
         for param in self.encoder.parameters():
             param.requires_grad = False
+        if self.cfg.get("frozen_encoder_eval", False):
+            self.encoder.eval()
 
     def set_criterion(self, loss: nn.Module) -> None:
         self.criterion = loss

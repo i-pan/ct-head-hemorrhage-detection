@@ -176,6 +176,7 @@ def segmentation_2d_defaults(cfg: Config) -> Config:
     cfg.aspp_separable = False
     cfg.aspp_dropout = 0.0
     cfg.freeze_encoder = False
+    cfg.frozen_encoder_eval = False
     cfg.freeze_decoder = False
     cfg.load_pretrained_encoder = None
     cfg.load_pretrained_decoder = None
