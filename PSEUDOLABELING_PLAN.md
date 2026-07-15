@@ -551,6 +551,31 @@ selected EfficientNetV2-M BiGRU. Hold off on MaxViT segmentation training until
 the classification and contextual results justify its additional deployment
 cost.
 
+All 19 conditions completed using train and validation features only. Retain
+the seed-88 `sliceheavy` MaxViT run rather than the mechanically highest
+slice-`any` `lowseries_nomil` run. The latter improves slice `any` by only
+`0.000089`, while `sliceheavy` has better slice mean AUC (`0.987590` versus
+`0.987353`), better series `any` (`0.989943` versus `0.988973`), and preserves
+the diagnostic MIL head. Its exact checkpoint and within-backbone blend
+coefficients are recorded in
+`rsna_ich_maxvit_tiny_sequence_bigru_selected.py`.
+
+| Validation output | Slice AUC any | Slice mean AUC | Series AUC any | Series mean AUC |
+| --- | ---: | ---: | ---: | ---: |
+| Selected EfficientNet contextual head | 0.987150 | 0.977955 | 0.985662 | 0.974946 |
+| Selected MaxViT contextual head | 0.987776 | 0.987590 | 0.989943 | 0.978382 |
+| Equal contextual logit ensemble | 0.988258 | 0.986312 | 0.989425 | 0.977861 |
+| Per-class optimized contextual ensemble | 0.988293 | 0.988092 | 0.989991 | 0.978704 |
+
+The contextual two-backbone ensemble is useful for slice predictions. Equal
+blending improves slice `any` by `0.000482` over MaxViT alone, while per-class
+blending improves it by `0.000517`. For series predictions, MaxViT supplies
+nearly all of the gain: equal blending regresses `any`, and per-class blending
+adds only `0.000048`. Continue to blend each contextual series output with its
+own classifier max-pooling baseline; for selected MaxViT this reaches series
+`any = 0.990580` and mean AUC `0.979727`. No holdout-test predictions were
+generated for this experiment.
+
 ## Potential Further Work
 
 The patient-separated holdout test has now been evaluated. Changes below may be

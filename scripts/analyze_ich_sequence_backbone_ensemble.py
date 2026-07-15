@@ -32,6 +32,7 @@ def parse_args() -> argparse.Namespace:
         "--efficientnet-experiments",
         default="experiments/rsna_ich_effv2m_sequence_bigru",
     )
+    parser.add_argument("--efficientnet-run-id", default=None)
     parser.add_argument(
         "--maxvit-results", default="logs/maxvit_sequence_sweep/results.csv"
     )
@@ -39,6 +40,7 @@ def parse_args() -> argparse.Namespace:
         "--maxvit-experiments",
         default="experiments/rsna_ich_maxvit_tiny_sequence_bigru",
     )
+    parser.add_argument("--maxvit-run-id", default=None)
     parser.add_argument("--output-dir", default="logs/sequence_backbone_ensemble")
     return parser.parse_args()
 
@@ -131,8 +133,10 @@ def analyze_level(
 
 def main() -> None:
     args = parse_args()
-    efficientnet_run = select_run(Path(args.efficientnet_results))
-    maxvit_run = select_run(Path(args.maxvit_results))
+    efficientnet_run = args.efficientnet_run_id or select_run(
+        Path(args.efficientnet_results)
+    )
+    maxvit_run = args.maxvit_run_id or select_run(Path(args.maxvit_results))
     efficientnet = load_predictions(
         Path(args.efficientnet_experiments), efficientnet_run
     )
