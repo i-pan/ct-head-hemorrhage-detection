@@ -67,3 +67,24 @@ def test_positive_dice_negative_focal_handles_all_empty_batch():
     assert torch.isfinite(out["loss"])
     assert out["dice_loss"] == pytest.approx(torch.tensor(0.0))
     assert out["positive_fraction"] == pytest.approx(torch.tensor(0.0))
+
+
+def test_positive_dice_negative_focal_applies_class_weights_to_both_terms():
+    target = torch.zeros(1, 2, 2, 2)
+    target[:, 0, 0, 0] = 1.0
+    target[:, 1, 0, 0] = 1.0
+    logits = torch.zeros_like(target)
+    weighted = _loss(class_weights=[1.0, 2.0])({"logits": logits}, {"y": target})
+
+    dice_only = _loss(
+        class_weights=[1.0, 2.0],
+        focal_weight=0.0,
+    )({"logits": logits}, {"y": target})
+    focal_only = _loss(
+        class_weights=[1.0, 2.0],
+        dice_weight=0.0,
+    )({"logits": logits}, {"y": target})
+
+    assert weighted["dice_loss"] == pytest.approx(dice_only["loss"])
+    assert weighted["focal_loss"] == pytest.approx(focal_only["loss"])
+    assert weighted["loss"] == pytest.approx(dice_only["loss"] + focal_only["loss"])

@@ -9,6 +9,7 @@ import json
 import math
 import re
 from copy import deepcopy
+from importlib import import_module
 from pathlib import Path
 
 import cv2
@@ -18,9 +19,8 @@ import torch
 
 from torch.utils.data import DataLoader
 
-from skp.configs.bhsd_effv2m_seg_9ch import cfg as bhsd_9ch_cfg
-from skp.configs.rsna_ich_effv2m_fixedval_9ch import cfg as rsna_9ch_cfg
 from skp.datasets import bhsd_seg, rsna_ich_2p5d
+from skp.metrics.bhsd import _hd95
 from skp.models.segmentation.base import Net
 from skp.models.utils import filter_weights_by_prefix, torch_load_weights
 
@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     oof = subparsers.add_parser("oof-threshold")
+    oof.add_argument("--bhsd-config", default="bhsd_effv2m_seg_9ch")
     oof.add_argument("--output-dir", default="data/pseudolabels/bhsd_9ch_oof_last")
     oof.add_argument("--checkpoint-root", default=str(DEFAULT_CHECKPOINT_ROOT))
     oof.add_argument("--batch-size", type=int, default=32)
@@ -50,6 +51,8 @@ def parse_args() -> argparse.Namespace:
     oof.add_argument("--thresholds", default=",".join(map(str, DEFAULT_THRESHOLDS)))
 
     rsna = subparsers.add_parser("pseudolabel-rsna")
+    rsna.add_argument("--bhsd-config", default="bhsd_effv2m_seg_9ch")
+    rsna.add_argument("--rsna-config", default="rsna_ich_effv2m_fixedval_9ch")
     rsna.add_argument("--output-dir", default="data/pseudolabels/rsna_9ch_last")
     rsna.add_argument("--checkpoint-root", default=str(DEFAULT_CHECKPOINT_ROOT))
     rsna.add_argument("--threshold-file", default="")
@@ -85,6 +88,10 @@ def _set_inference_defaults(cfg):
     return cfg
 
 
+def load_config(config_name: str):
+    return import_module(f"skp.configs.{config_name}").cfg
+
+
 def checkpoint_paths(checkpoint_root: str | Path) -> list[Path]:
     root = Path(checkpoint_root)
     paths = [root / f"fold{fold}" / "checkpoints" / "last.ckpt" for fold in range(5)]
@@ -94,8 +101,8 @@ def checkpoint_paths(checkpoint_root: str | Path) -> list[Path]:
     return paths
 
 
-def load_model(checkpoint_path: str | Path, device: torch.device) -> Net:
-    cfg = _set_inference_defaults(bhsd_9ch_cfg)
+def load_model(checkpoint_path: str | Path, device: torch.device, base_cfg) -> Net:
+    cfg = _set_inference_defaults(base_cfg)
     model = Net(cfg)
     weights = torch_load_weights(str(checkpoint_path))
     weights = filter_weights_by_prefix(weights, "model.")
@@ -128,10 +135,13 @@ def make_loader(dataset, batch_size: int, num_workers: int) -> DataLoader:
 
 def predict_model(model: Net, x: torch.Tensor, device: torch.device) -> torch.Tensor:
     x = x.to(device, non_blocking=True)
-    with torch.inference_mode(), torch.autocast(
-        device_type="cuda",
-        dtype=torch.bfloat16,
-        enabled=device.type == "cuda",
+    with (
+        torch.inference_mode(),
+        torch.autocast(
+            device_type="cuda",
+            dtype=torch.bfloat16,
+            enabled=device.type == "cuda",
+        ),
     ):
         return model({"x": x})["logits"].sigmoid().float().cpu()
 
@@ -225,6 +235,7 @@ def run_oof_threshold(args: argparse.Namespace) -> None:
     thresholds = parse_thresholds(args.thresholds)
     device = torch.device(args.device)
     ckpts = checkpoint_paths(args.checkpoint_root)
+    bhsd_9ch_cfg = load_config(args.bhsd_config)
 
     full_df = pd.read_csv(bhsd_9ch_cfg.annotations_file)
     full_df["global_index"] = np.arange(len(full_df))
@@ -238,7 +249,9 @@ def run_oof_threshold(args: argparse.Namespace) -> None:
     shape = (len(full_df), bhsd_9ch_cfg.image_height, bhsd_9ch_cfg.image_width)
     prob_path = out_dir / "oof_any_prob_uint8.npy"
     target_path = out_dir / "oof_any_target_uint8.npy"
-    prob_mm = np.lib.format.open_memmap(prob_path, mode="w+", dtype=np.uint8, shape=shape)
+    prob_mm = np.lib.format.open_memmap(
+        prob_path, mode="w+", dtype=np.uint8, shape=shape
+    )
     target_mm = np.lib.format.open_memmap(
         target_path, mode="w+", dtype=np.uint8, shape=shape
     )
@@ -248,7 +261,7 @@ def run_oof_threshold(args: argparse.Namespace) -> None:
         cfg.fold = fold
         dataset = bhsd_seg.Dataset(cfg, "val")
         loader = make_loader(dataset, args.batch_size, args.num_workers)
-        model = load_model(ckpt, device)
+        model = load_model(ckpt, device, bhsd_9ch_cfg)
         print(f"OOF fold {fold}: N={len(dataset)} checkpoint={ckpt}", flush=True)
         for batch_idx, batch in enumerate(loader):
             probs = predict_model(model, batch["x"], device)[:, 5].numpy()
@@ -278,24 +291,44 @@ def run_oof_threshold(args: argparse.Namespace) -> None:
     for threshold in thresholds:
         cutoff = int(round(threshold * 255.0))
         slice_scores = []
+        slice_hd95_scores = []
         volume_scores = []
+        volume_hd95_scores = []
         for _, group in full_df.groupby("series_uid", sort=False):
             idx = group["global_index"].to_numpy(dtype=np.int64)
             p = prob[idx] >= cutoff
             t = target[idx]
-            slice_scores.extend(
-                score
-                for score in (_binary_dice(p[i], t[i]) for i in range(len(idx)))
-                if not math.isnan(score)
-            )
+            row_spacing = float(group.iloc[0]["row_spacing_mm"])
+            col_spacing = float(group.iloc[0]["col_spacing_mm"])
+            slice_spacing = float(group.iloc[0]["slice_spacing_mm"])
+            for slice_idx in range(len(idx)):
+                score = _binary_dice(p[slice_idx], t[slice_idx])
+                if not math.isnan(score):
+                    slice_scores.append(score)
+                hd95 = _hd95(
+                    p[slice_idx],
+                    t[slice_idx],
+                    (row_spacing, col_spacing),
+                )
+                if not math.isnan(hd95):
+                    slice_hd95_scores.append(hd95)
             volume_score = _binary_dice(p, t)
             if not math.isnan(volume_score):
                 volume_scores.append(volume_score)
+            volume_hd95 = _hd95(
+                p,
+                t,
+                (slice_spacing, row_spacing, col_spacing),
+            )
+            if not math.isnan(volume_hd95):
+                volume_hd95_scores.append(volume_hd95)
         volume_rows.append(
             {
                 "threshold": threshold,
                 "slice_dice_any": float(np.mean(slice_scores)),
+                "slice_hd95_any": float(np.mean(slice_hd95_scores)),
                 "volume_dice_any": float(np.mean(volume_scores)),
+                "volume_hd95_any": float(np.mean(volume_hd95_scores)),
                 "n_slice_scores": len(slice_scores),
                 "n_volume_scores": len(volume_scores),
             }
@@ -303,17 +336,22 @@ def run_oof_threshold(args: argparse.Namespace) -> None:
 
     sweep_df = pd.DataFrame(volume_rows)
     sweep_df.to_csv(out_dir / "threshold_sweep.csv", index=False)
-    best = sweep_df.loc[sweep_df["volume_dice_any"].idxmax()].to_dict()
+    best_dice = sweep_df.loc[sweep_df["volume_dice_any"].idxmax()].to_dict()
+    best_hd95 = sweep_df.loc[sweep_df["volume_hd95_any"].idxmin()].to_dict()
     summary = {
+        "bhsd_config": args.bhsd_config,
         "checkpoint_root": str(args.checkpoint_root),
         "checkpoint_paths": [str(path) for path in ckpts],
         "metadata_path": str(metadata_path),
         "probability_path": str(prob_path),
         "target_path": str(target_path),
         "thresholds": thresholds,
-        "selected_threshold": float(best["threshold"]),
-        "selected_volume_dice_any": float(best["volume_dice_any"]),
-        "selected_slice_dice_any": float(best["slice_dice_any"]),
+        "selected_threshold": float(best_dice["threshold"]),
+        "selected_volume_dice_any": float(best_dice["volume_dice_any"]),
+        "selected_slice_dice_any": float(best_dice["slice_dice_any"]),
+        "selected_hd95_threshold": float(best_hd95["threshold"]),
+        "selected_volume_hd95_any": float(best_hd95["volume_hd95_any"]),
+        "selected_slice_hd95_any": float(best_hd95["slice_hd95_any"]),
     }
     with open(out_dir / "threshold_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
@@ -334,7 +372,7 @@ def load_threshold(args: argparse.Namespace) -> float:
     return float(summary["selected_threshold"])
 
 
-def make_rsna_dataset(args: argparse.Namespace):
+def make_rsna_dataset(args: argparse.Namespace, rsna_9ch_cfg):
     cfg = _set_inference_defaults(rsna_9ch_cfg)
     cfg.dataset = "rsna_ich_2p5d"
     cfg.batch_size = args.batch_size
@@ -354,7 +392,8 @@ def make_rsna_dataset(args: argparse.Namespace):
     )
     dataset.df = df
     dataset.series_index = {
-        series_uid: idx for idx, series_uid in enumerate(sorted(df["series_uid"].unique()))
+        series_uid: idx
+        for idx, series_uid in enumerate(sorted(df["series_uid"].unique()))
     }
     return dataset, splits, len(all_series), len(assigned)
 
@@ -376,7 +415,9 @@ def write_series_npz(
         slice_paths=np.asarray([record["slice_path"] for record in records]),
         filenames=np.asarray([record["filename"] for record in records]),
         slice_sort_keys=np.asarray([record["slice_sort_key"] for record in records]),
-        labels=np.stack([record["labels"] for record in records], axis=0).astype(np.uint8),
+        labels=np.stack([record["labels"] for record in records], axis=0).astype(
+            np.uint8
+        ),
         any_probability_mean=np.asarray(
             [record["any_probability_mean"] for record in records],
             dtype=np.float16,
@@ -396,7 +437,11 @@ def run_rsna_pseudolabel(args: argparse.Namespace) -> None:
     threshold = load_threshold(args)
     device = torch.device(args.device)
     ckpts = checkpoint_paths(args.checkpoint_root)
-    dataset, splits, total_series, assigned_series = make_rsna_dataset(args)
+    bhsd_9ch_cfg = load_config(args.bhsd_config)
+    rsna_9ch_cfg = load_config(args.rsna_config)
+    dataset, splits, total_series, assigned_series = make_rsna_dataset(
+        args, rsna_9ch_cfg
+    )
     loader = make_loader(dataset, args.batch_size, args.num_workers)
     print(
         f"RSNA rank {args.rank}/{args.world_size}: N={len(dataset)} positive slices, "
@@ -404,7 +449,7 @@ def run_rsna_pseudolabel(args: argparse.Namespace) -> None:
         flush=True,
     )
 
-    models = [load_model(path, device) for path in ckpts]
+    models = [load_model(path, device, bhsd_9ch_cfg) for path in ckpts]
     manifest_path = out_dir / f"manifest_rank{args.rank}.csv"
     fieldnames = [
         "patient_id",
@@ -538,6 +583,8 @@ def run_rsna_pseudolabel(args: argparse.Namespace) -> None:
     summary = {
         "rank": args.rank,
         "world_size": args.world_size,
+        "bhsd_config": args.bhsd_config,
+        "rsna_config": args.rsna_config,
         "splits": splits,
         "n_positive_slices": len(dataset),
         "n_assigned_series": assigned_series,

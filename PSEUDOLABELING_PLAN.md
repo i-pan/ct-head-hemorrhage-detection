@@ -576,6 +576,44 @@ own classifier max-pooling baseline; for selected MaxViT this reaches series
 `any = 0.990580` and mean AUC `0.979727`. No holdout-test predictions were
 generated for this experiment.
 
+### MaxViT-only mask pseudolabel replication
+
+Repeat the complete segmentation pipeline without using any EfficientNet model,
+checkpoint, prediction, threshold, or mask artifact. Use segmentation class
+weights `[1, 1, 1, 1, 1, 2]` throughout so the `any` channel matches the
+classification loss weighting and contributes `2/7` of each normalized Dice
+and focal term.
+
+1. Train five patient-fold MaxViT-Tiny U-Net teachers on BHSD from the final
+   9-channel MaxViT classification `last.ckpt`. Use per-sample DiceFocalLoss,
+   encoder LR `3e-5`, decoder LR `3e-4`, ten epochs, and the established
+   augmentations and threshold sweep.
+2. Generate combined BHSD OOF probabilities, selecting the primary pseudomask
+   threshold by volume Dice-any. Also record independent Dice and HD95 sweeps
+   from 0.1 through 0.9.
+3. Ensemble all five MaxViT teachers on classification-positive RSNA slices.
+   Apply classification channel gates, create the `any` mask first, distribute
+   it across allowed subtypes, and store threshold-centered soft uint8 masks at
+   temperature 1.0 in compressed per-series NPZ files.
+4. Restore and freeze the canonical MaxViT classification encoder in evaluation
+   mode. Pretrain only a DeepLabV3+ decoder and segmentation head for three
+   epochs on all slices from positive RSNA series, using Dice plus focal for
+   positive masks and focal weighted 0.05 for empty slices.
+5. The final segmentation model is the five-fold BHSD ensemble initialized from
+   this pseudolabel-pretrained decoder. Restore the canonical encoder after
+   loading the full pseudolabel checkpoint, keep it frozen in evaluation mode,
+   and fine-tune each decoder for ten BHSD epochs. These five checkpoints, not
+   the RSNA-pretraining checkpoint, are the deployable segmentation models.
+6. Train matched direct-frozen and pseudolabel-initialized encoder-finetuned
+   controls. The former tests the pseudolabel contribution; the latter is a
+   non-deployable upper bound because it changes classification features.
+
+Use run ID suffix `any2_20260715`. Teacher OOF artifacts live under
+`data/pseudolabels/bhsd_maxvit_9ch_oof_any2`; RSNA masks live under
+`data/pseudolabels/rsna_maxvit_9ch_any2`. Treat all BHSD results as internally
+biased because the BHSD-trained teacher ensemble generates the intermediate
+RSNA masks. Do not access the held-out classification test set.
+
 ## Potential Further Work
 
 The patient-separated holdout test has now been evaluated. Changes below may be
