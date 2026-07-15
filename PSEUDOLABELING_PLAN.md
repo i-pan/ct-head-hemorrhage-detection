@@ -521,6 +521,36 @@ a series-level `any` improvement over max pooling. Keep the fixed blend for the
 selected deployment policy and retain baseline max pooling as a transparent
 series-`any` reference/fallback.
 
+### MaxViT backbone and contextual-head comparison
+
+Train `maxvit_tiny_tf_512.in1k` with the same 9-channel inputs, fixed patient
+split, loss, augmentations, optimizer, schedule, batch size, and three-epoch
+protocol as the EfficientNetV2-M classifier. Its final validation slice
+`auc_any` is `0.985481`, compared with `0.984356` for EfficientNetV2-M. An equal
+logit blend reaches slice `auc_any = 0.986111` and six-class mean AUC
+`0.986667`, providing validation evidence that the two backbones have
+complementary errors. These results do not justify another evaluation on the
+already observed holdout test.
+
+For contextual comparison, extract MaxViT pooled features from train and
+validation only using the final classifier `last.ckpt`. Store 512-dimensional
+features and six baseline logits as `float16`; labels remain `uint8`. Do not
+extract holdout-test features. Run the same 19-condition BiGRU matrix used for
+EfficientNetV2-M, covering auxiliary objective weights, feature noise, one- or
+two-layer GRUs, hidden width, learning rate, and seeds 88-90. All unchanged
+sequence settings, including maximum length 64, projection width 512, natural
+series distribution, 20 epochs, two-GPU DDP, and per-class validation-only
+logit blending, remain matched. Select and compare using validation only.
+
+The MaxViT sequence pipeline writes features under
+`data/features/rsna_ich_maxvit_tiny_9ch`, checkpoints under
+`experiments/rsna_ich_maxvit_tiny_sequence_bigru`, and analysis under
+`logs/maxvit_sequence_sweep`. Compare standalone baseline, contextual, and
+blended slice and series metrics against their same-backbone baselines and the
+selected EfficientNetV2-M BiGRU. Hold off on MaxViT segmentation training until
+the classification and contextual results justify its additional deployment
+cost.
+
 ## Potential Further Work
 
 The patient-separated holdout test has now been evaluated. Changes below may be

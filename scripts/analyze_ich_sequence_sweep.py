@@ -32,9 +32,13 @@ ALPHAS = np.asarray([0.0, 0.25, 0.5, 0.75, 1.0], dtype=np.float32)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", default="logs/sequence_sweep/manifest.json")
     parser.add_argument(
-        "--manifest", default="logs/sequence_sweep/manifest.json"
+        "--experiment-dir",
+        default="experiments/rsna_ich_effv2m_sequence_bigru",
     )
+    parser.add_argument("--feature-dir", default="data/features/rsna_ich_effv2m_9ch")
+    parser.add_argument("--output-dir", default="logs/sequence_sweep")
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--num-workers", type=int, default=4)
@@ -42,8 +46,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def run_dir(run_id: str) -> Path:
-    return Path("experiments/rsna_ich_effv2m_sequence_bigru") / run_id
+def run_dir(experiment_dir: Path, run_id: str) -> Path:
+    return experiment_dir / run_id
 
 
 def load_run_config(path: Path) -> Config:
@@ -53,13 +57,16 @@ def load_run_config(path: Path) -> Config:
 
 def export_predictions(
     run_id: str,
+    experiment_dir: Path,
     device: str,
     batch_size: int,
     num_workers: int,
     split: str = "val",
 ) -> Path:
-    root = run_dir(run_id)
-    filename = "validation_predictions.npz" if split == "val" else f"{split}_predictions.npz"
+    root = run_dir(experiment_dir, run_id)
+    filename = (
+        "validation_predictions.npz" if split == "val" else f"{split}_predictions.npz"
+    )
     output_path = root / filename
     if output_path.exists():
         return output_path
@@ -126,8 +133,8 @@ def export_predictions(
             arrays["mil_logits"].append(
                 out["mil_logits"].detach().float().cpu().numpy()
             )
-            base_probabilities = batch["base_logits"].sigmoid().masked_fill(
-                ~mask.unsqueeze(-1), -1.0
+            base_probabilities = (
+                batch["base_logits"].sigmoid().masked_fill(~mask.unsqueeze(-1), -1.0)
             )
             base_series_probability = base_probabilities.amax(dim=1).clamp(
                 1e-6, 1 - 1e-6
@@ -169,19 +176,17 @@ def optimize_blend(
     for class_index in range(targets.shape[1]):
         aucs = []
         for alpha in ALPHAS:
-            logits = (
-                (1.0 - alpha) * baseline_logits[:, class_index]
-                + alpha * candidate_logits[:, class_index]
-            )
+            logits = (1.0 - alpha) * baseline_logits[
+                :, class_index
+            ] + alpha * candidate_logits[:, class_index]
             aucs.append(roc_auc_score(targets[:, class_index], sigmoid(logits)))
         best_index = int(np.argmax(aucs))
         best_alpha[class_index] = ALPHAS[best_index]
         best_auc[class_index] = aucs[best_index]
         alpha = best_alpha[class_index]
-        blended_logits[:, class_index] = (
-            (1.0 - alpha) * baseline_logits[:, class_index]
-            + alpha * candidate_logits[:, class_index]
-        )
+        blended_logits[:, class_index] = (1.0 - alpha) * baseline_logits[
+            :, class_index
+        ] + alpha * candidate_logits[:, class_index]
     return best_alpha, best_auc, blended_logits
 
 
@@ -194,7 +199,9 @@ def paired_patient_bootstrap(
     seed: int = 88,
 ) -> dict[str, dict[str, float]]:
     unique_patients = np.unique(patient_ids)
-    patient_rows = [np.flatnonzero(patient_ids == patient) for patient in unique_patients]
+    patient_rows = [
+        np.flatnonzero(patient_ids == patient) for patient in unique_patients
+    ]
     rng = np.random.default_rng(seed)
     any_deltas = np.empty(num_samples, dtype=np.float64)
     mean_deltas = np.empty(num_samples, dtype=np.float64)
@@ -222,9 +229,7 @@ def evaluate_run(record: dict, predictions: dict[str, np.ndarray]) -> tuple[dict
     baseline_slice_auc = class_aucs(
         predictions["slice_targets"], predictions["slice_base_logits"]
     )
-    series_auc = class_aucs(
-        predictions["series_targets"], predictions["series_logits"]
-    )
+    series_auc = class_aucs(predictions["series_targets"], predictions["series_logits"])
     mil_auc = class_aucs(predictions["series_targets"], predictions["mil_logits"])
     baseline_series_auc = class_aucs(
         predictions["series_targets"], predictions["series_base_logits"]
@@ -281,15 +286,17 @@ def main() -> None:
     args = parse_args()
     with Path(args.manifest).open() as f:
         manifest = json.load(f)
-    series_metadata = pd.read_csv(
-        "data/features/rsna_ich_effv2m_9ch/val_series.csv"
-    )
+    series_metadata = pd.read_csv(Path(args.feature_dir) / "val_series.csv")
     summaries = []
     details_by_run = {}
     predictions_by_run = {}
     for record in manifest:
         path = export_predictions(
-            record["run_id"], args.device, args.batch_size, args.num_workers
+            record["run_id"],
+            Path(args.experiment_dir),
+            args.device,
+            args.batch_size,
+            args.num_workers,
         )
         with np.load(path) as loaded:
             predictions = {key: loaded[key] for key in loaded.files}
@@ -352,7 +359,8 @@ def main() -> None:
             args.bootstrap_samples,
         ),
     }
-    output_dir = Path("logs/sequence_sweep")
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     results.sort_values("slice_auc_any", ascending=False).to_csv(
         output_dir / "results.csv", index=False
     )

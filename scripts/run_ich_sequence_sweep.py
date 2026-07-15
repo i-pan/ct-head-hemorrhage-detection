@@ -15,7 +15,10 @@ CONDITIONS = [
     ("sliceheavy", {"loss_params.series_weight": 0.25, "loss_params.mil_weight": 0.1}),
     ("nomil", {"loss_params.series_weight": 0.25, "loss_params.mil_weight": 0.0}),
     ("minaux", {"loss_params.series_weight": 0.1, "loss_params.mil_weight": 0.05}),
-    ("lowseries_nomil", {"loss_params.series_weight": 0.1, "loss_params.mil_weight": 0.0}),
+    (
+        "lowseries_nomil",
+        {"loss_params.series_weight": 0.1, "loss_params.mil_weight": 0.0},
+    ),
     ("noise0", {"feature_noise_std": 0.0}),
     ("noise01", {"feature_noise_std": 0.01}),
     ("gru1", {"sequence_num_layers": 1}),
@@ -101,25 +104,31 @@ CONDITIONS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tag", default="20260713")
+    parser.add_argument("--config", default="rsna_ich_effv2m_sequence_bigru")
+    parser.add_argument(
+        "--experiment-dir",
+        default="experiments/rsna_ich_effv2m_sequence_bigru",
+    )
+    parser.add_argument("--log-dir", default="logs/sequence_sweep")
     parser.add_argument("--devices", default="-1")
     parser.add_argument("--precision", default="bf16-mixed")
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
 
-def checkpoint_dir(run_id: str) -> Path:
-    return Path(
-        "experiments/rsna_ich_effv2m_sequence_bigru"
-    ) / run_id / "fixed_split/checkpoints"
+def checkpoint_dir(experiment_dir: Path, run_id: str) -> Path:
+    return experiment_dir / run_id / "fixed_split/checkpoints"
 
 
 def main() -> None:
     args = parse_args()
-    Path("logs/sequence_sweep").mkdir(parents=True, exist_ok=True)
+    experiment_dir = Path(args.experiment_dir)
+    log_dir = Path(args.log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
     manifest = []
     for index, (name, overrides) in enumerate(CONDITIONS):
         run_id = f"seqsweep_{index:02d}_{name}_{args.tag}"
-        best = checkpoint_dir(run_id) / "best.ckpt"
+        best = checkpoint_dir(experiment_dir, run_id) / "best.ckpt"
         record = {"index": index, "name": name, "run_id": run_id, **overrides}
         manifest.append(record)
         if best.exists() and not args.overwrite:
@@ -132,7 +141,7 @@ def main() -> None:
             "python",
             "-m",
             "skp.train",
-            "rsna_ich_effv2m_sequence_bigru",
+            args.config,
             "--run_id",
             run_id,
             "--devices",
@@ -151,7 +160,7 @@ def main() -> None:
                 continue
             command.extend([f"--{key}", str(value)])
 
-        log_path = Path("logs/sequence_sweep") / f"{run_id}.log"
+        log_path = log_dir / f"{run_id}.log"
         print(f"[{index + 1}/{len(CONDITIONS)}] running {name}: {overrides}")
         env = os.environ.copy()
         env.setdefault("NCCL_SOCKET_IFNAME", "lo")
@@ -170,7 +179,7 @@ def main() -> None:
                 f"see {log_path}."
             )
 
-    with Path("logs/sequence_sweep/manifest.json").open("w") as f:
+    with (log_dir / "manifest.json").open("w") as f:
         json.dump(manifest, f, indent=2)
 
 
