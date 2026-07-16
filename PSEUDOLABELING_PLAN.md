@@ -614,6 +614,47 @@ Use run ID suffix `any2_20260715`. Teacher OOF artifacts live under
 biased because the BHSD-trained teacher ensemble generates the intermediate
 RSNA masks. Do not access the held-out classification test set.
 
+### MaxViT release selection and held-out documentation
+
+After completing all MaxViT model and blend selection on validation, replace
+the earlier EfficientNetV2-M Hugging Face release with the selected seed-88
+MaxViT `sliceheavy` BiGRU and the five pseudolabel-initialized, frozen-encoder
+BHSD decoders. The held-out test was already consumed by the earlier release;
+the later MaxViT evaluation documents the replacement and is not used for any
+additional checkpoint, coefficient, or architecture selection.
+
+| Held-out output | Baseline | Contextual | Fixed validation blend |
+| --- | ---: | ---: | ---: |
+| Slice AUC any | 0.980826 | 0.982764 | 0.982764 |
+| Slice mean AUC | 0.975843 | 0.971354 | 0.976214 |
+| Series AUC any | 0.979037 | 0.979871 | 0.980402 |
+| Series mean AUC | 0.961553 | 0.959590 | 0.962950 |
+
+Patient-cluster bootstrap gives a fixed-blend slice `any` delta of `+0.001952`
+with 95% CI `[+0.001283, +0.002693]`, and a fixed-blend series `any` delta of
+`+0.001347` with 95% CI `[+0.000164, +0.003135]`. Macro-average confidence
+intervals cross zero. Epidural regresses with the contextual head and remains a
+visible limitation of the validation-selected blend.
+
+The five released segmentation checkpoints are the validation-selected
+`best.ckpt` files from
+`bhsd_maxvit_tiny_seg_9ch_deeplab_pseudolabel_frozen`. Their threshold-swept
+monitor values are `0.6055`, `0.6326`, `0.6331`, `0.6443`, and `0.6858` (mean
+`0.6403`). At threshold 0.5, fold-mean volume Dice is `0.6362`, slice Dice is
+`0.5407`, volume HD95 is `34.37 mm`, and slice HD95 is `89.02 mm`. These remain
+internally biased BHSD estimates because of the teacher-derived pseudolabel
+path and are not external generalization claims.
+
+Package one canonical frozen MaxViT encoder. Its multiscale feature maps fan
+out to all five decoder/head pairs, while the deepest feature map is passed
+through the MaxViT classifier head and pooling to produce the same 512-D feature
+used by the linear classifier and BiGRU. Export-time tensor equality checks
+confirm every decoder checkpoint has the canonical encoder state. Integrated
+inference was compared with the original classifier and all five segmentation
+checkpoints on a real held-out slab; classifier logits, pooled features,
+individual fold masks, and the ensemble mask all matched with maximum absolute
+difference `0.0`.
+
 ## Potential Further Work
 
 The patient-separated holdout test has now been evaluated. Changes below may be
@@ -637,12 +678,10 @@ test set.
    slices that trigger a displayed localization heatmap. Thresholds should
    reflect the higher cost of missing hemorrhage rather than defaulting to 0.5.
 
-3. **Integrated inference model.** Package the frozen encoder, original
-   per-slice classification head, selected BiGRU, fixed blend coefficients, and
-   DeepLabV3+ localization decoder into one inference path. Verify that cached
-   feature inference and integrated inference produce numerically equivalent
-   outputs, including edge-slice zero filling, padding masks, series ordering,
-   and source-slice mapping.
+3. **Integrated inference regression coverage.** The one-pass MaxViT package is
+   implemented and checkpoint-equivalent. Retain automated coverage for edge
+   zero filling, padding masks, series ordering, long-series source-index
+   restoration, DICOM/NIfTI orientation, and future dependency upgrades.
 
 4. **External validation.** Evaluate classification, calibration, and
    localization on a dataset that was not involved in classifier training,
@@ -655,7 +694,7 @@ test set.
 The image encoder used for sequence modeling is already a true frozen-state
 encoder: feature extraction loads the original classification checkpoint,
 calls `eval()`, and runs under `torch.inference_mode()`. Sequence training uses
-only the resulting fixed 1,280-dimensional arrays. Therefore any number of
+only the resulting fixed 512-dimensional MaxViT arrays. Therefore any number of
 sequence heads can share the same single encoder pass at deployment.
 
 Run a validation-only architecture/ensemble comparison using the selected loss

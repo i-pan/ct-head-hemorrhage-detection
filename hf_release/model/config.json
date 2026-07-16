@@ -1,0 +1,44 @@
+{
+  "model_type": "ct_head_hemorrhage_detection",
+  "architecture": {
+    "slice_classifier": "maxvit_tiny_tf_512.in1k",
+    "sequence_model": "2-layer bidirectional GRU with class-specific attention",
+    "segmentation_decoder": "DeepLabV3Plus",
+    "segmentation_folds": 5,
+    "shared_encoder_inference": true,
+    "encoder_passes_per_slab": 1,
+    "segmentation_encoder_state": "classifier",
+    "pooled_feature_consumers": ["linear_classifier", "bidirectional_gru"],
+    "feature_map_consumers": ["segmentation_fold0", "segmentation_fold1", "segmentation_fold2", "segmentation_fold3", "segmentation_fold4"]
+  },
+  "input": {
+    "height": 512,
+    "width": 512,
+    "large_image_resize_threshold": 640,
+    "adjacent_slices": 3,
+    "channel_order": "slice-major",
+    "windows": [
+      {"name": "brain", "center": 40, "width": 80},
+      {"name": "subdural", "center": 80, "width": 200},
+      {"name": "bone", "center": 600, "width": 2800}
+    ],
+    "normalization": {"input_min": 0.0, "input_max": 1.0, "output_min": -1.0, "output_max": 1.0}
+  },
+  "labels": [
+    "epidural",
+    "intraparenchymal",
+    "intraventricular",
+    "subarachnoid",
+    "subdural",
+    "any"
+  ],
+  "pooled_feature_dimension": 512,
+  "slice_blend_alphas": [0.75, 0.75, 0.75, 0.75, 0.75, 1.0],
+  "series_blend_alphas": [0.5, 0.25, 0.5, 1.0, 0.5, 0.5],
+  "series_baseline_aggregation": "max_probability",
+  "inference_batch_size_default": 4,
+  "training_max_sequence_length": 64,
+  "long_series_inference_default": "resample",
+  "long_series_inference_options": ["full", "resample"],
+  "source_code_revision": "098b7ff"
+}

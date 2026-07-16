@@ -29,4 +29,11 @@ data/
 *.pth
 *.onnx
 
+# Local Hugging Face release outputs and deidentified demo images.
+hf_release/model/**/*.safetensors
+hf_release/model/checksums.json
+hf_release/space/assets/
+hf_release/space/examples/
+hf_release/space/predictions.json
+
 .DS_Store
