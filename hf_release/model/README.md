@@ -323,7 +323,7 @@ while avoiding redundant encoder passes.
 The implementation, training configurations, frozen-state regression tests,
 and validation-only sequence architecture comparison are available at source
 revision
-[`098b7ff`](https://github.com/i-pan/ct-head-hemorrhage-detection/tree/098b7ff).
+[`914c57d`](https://github.com/i-pan/ct-head-hemorrhage-detection/tree/914c57d).
 
 ## Slice Inference Example
 

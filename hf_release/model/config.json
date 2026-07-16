@@ -40,5 +40,5 @@
   "training_max_sequence_length": 64,
   "long_series_inference_default": "resample",
   "long_series_inference_options": ["full", "resample"],
-  "source_code_revision": "098b7ff"
+  "source_code_revision": "914c57d"
 }
