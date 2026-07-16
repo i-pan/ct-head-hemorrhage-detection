@@ -25,7 +25,12 @@ from timm.layers import convert_sync_batchnorm
 from typing import Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
-from skp.callbacks import EMACallback, MLFlowSystemMonitorCallback, GPUStatsLogger
+from skp.callbacks import (
+    EMACallback,
+    FinalCheckpointCallback,
+    GPUStatsLogger,
+    MLFlowSystemMonitorCallback,
+)
 from skp.configs.base import Config
 from skp.environment import configure_gcp_gpu_environment, load_project_dotenv
 from skp.optim import get_optimizer, get_scheduler
@@ -346,18 +351,24 @@ def get_trainer(cfg: Config) -> Tuple[lightning.Trainer, Config]:
             )
         )
 
+    checkpoint_dir = os.path.join(save_dir, "checkpoints")
+    save_weights_only = cfg.get("save_weights_only", False) or False
     callbacks.extend(
         [
             lightning_callbacks.ModelCheckpoint(
                 # Set dirpath explicitly to save checkpoints in the desired folder
                 # This is so that we can keep the desired directory structure and format locally
-                dirpath=os.path.join(save_dir, "checkpoints"),
+                dirpath=checkpoint_dir,
                 monitor="val_metric",
                 filename="{epoch:03d}-{val_metric:.4f}",
                 save_last=True,
-                save_weights_only=cfg.get("save_weights_only", False) or False,
+                save_weights_only=save_weights_only,
                 mode=cfg.val_track,
                 save_top_k=cfg.get("save_top_k", 1) or 1,
+            ),
+            FinalCheckpointCallback(
+                dirpath=checkpoint_dir,
+                save_weights_only=save_weights_only,
             ),
             lightning_callbacks.LearningRateMonitor(logging_interval="step"),
             lightning_callbacks.TQDMProgressBar(refresh_rate=10),
