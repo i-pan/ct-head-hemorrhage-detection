@@ -1,0 +1,4 @@
+interface:
+  display_name: "Training Monitor"
+  short_description: "Training results, resource usage, timing, and ETAs"
+  default_prompt: "Use $training-monitor to summarize the latest training results, trends, resource usage, timing, and ETAs."

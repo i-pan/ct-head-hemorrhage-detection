@@ -45,3 +45,12 @@ pseudo-labeling. These remain proposals; the committed queues run backbone
 ablations only. Calibration needs patient-separated fitting/evaluation. Missing
 subtype labels must not become negatives, and uncertain slices in positive
 series should not automatically receive negative pseudo-labels.
+
+## Completed-run reporting: final checkpoint preference
+
+The user prefers final checkpoints over validation-selected best checkpoints.
+Training-monitor now displays both metrics and their epochs, leading comparisons
+with final. Added the repository-local skill so this preference travels with
+the project. Missing final evaluations must be reported as unavailable; existing
+best-checkpoint exports are not final-checkpoint evidence. This reporting update
+does not change current training, checkpoint selection, or exports.
