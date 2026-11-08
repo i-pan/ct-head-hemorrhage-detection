@@ -28,17 +28,12 @@ def main():
     parser.add_argument("--export-only", type=Path)
     args = parser.parse_args()
     if args.export_only:
-        from analyze_ich_backbone_ensemble import export_predictions
+        from export_ich_checkpoint_predictions import export_both
 
         inference_args = argparse.Namespace(
             device="cuda:0", batch_size=64, num_workers=4
         )
-        export_predictions(
-            args.config,
-            args.export_only / "fold0/checkpoints/best.ckpt",
-            args.export_only / "validation_predictions.npz",
-            inference_args,
-        )
+        export_both(args.config, args.export_only, inference_args)
         return
     if not 0 <= args.positive_probability <= 1:
         parser.error("positive-probability must be in [0,1]")

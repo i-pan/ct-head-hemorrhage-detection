@@ -54,3 +54,15 @@ with final. Added the repository-local skill so this preference travels with
 the project. Missing final evaluations must be reported as unavailable; existing
 best-checkpoint exports are not final-checkpoint evidence. This reporting update
 does not change current training, checkpoint selection, or exports.
+
+## Best and final prediction exports
+
+Post-training export now writes validation_predictions_best.npz and
+validation_predictions_final.npz with JSON provenance (checkpoint path/hash,
+zero-based epoch, completed epochs, global step, config and weight variant).
+Final selects the most recent saved last*.ckpt by optimizer step, avoiding stale
+Lightning last-v1 copies. Existing verified exports are reused; changed checkpoints
+refresh them. Legacy validation_predictions.npz remains a historical best export
+and is never silently relabeled final. Current queues pick up the new export
+entrypoint after training without stopping any run. Completed runs are being
+backfilled separately. Final-only ensemble analysis excludes MaxViT-75.

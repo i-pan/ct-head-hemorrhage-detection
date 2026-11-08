@@ -28,3 +28,13 @@ A progress bar labeled `Epoch 2` is the third epoch. At validation cadence five,
 Discover related ablation arms from queue records, protocol notes, and conversation context, including companion queues and reused completed baselines. Align completed validation epochs or cumulative steps, not row positions or run age. A new arm at epoch 10 should be compared to the baseline at epoch 10; baseline best/final performance is separate context.
 
 For 50/75/100-epoch cosine-schedule ablations, equal epochs can mean equal data exposure but different LR and warmup phases. Report those distinctions and final results at their stated budgets. Do not treat equal fractions of the schedule as equal compute. Confirm the metric definition and evaluation cohort are shared before interpreting deltas.
+
+## Checkpoint-specific prediction archives
+
+For updated exporters, identify `validation_predictions_best.npz` and
+`validation_predictions_final.npz` separately. Final refers to the latest saved
+checkpoint; verify epoch/step against the actual endpoint. SKPv2 embeds checkpoint
+provenance in NPZ metadata; ICH also writes JSON sidecars with checkpoint and archive
+hashes. A legacy `validation_predictions.npz` may contain best-checkpoint predictions
+only. Never infer final provenance from that ambiguous filename. Report missing
+exports accurately and do not launch backfill from a monitoring-only request.
