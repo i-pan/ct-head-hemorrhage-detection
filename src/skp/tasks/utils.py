@@ -79,7 +79,9 @@ def build_dataloader(cfg: Config, dataset: Dataset, mode: str) -> DataLoader:
     )
     dataloader_params = {}
     dataloader_params["num_workers"] = num_workers
-    dataloader_params["drop_last"] = mode == "train"
+    dataloader_params["drop_last"] = (
+        cfg.get("train_drop_last", True) if mode == "train" else False
+    )
     dataloader_params["shuffle"] = mode == "train"
     dataloader_params["pin_memory"] = cfg.get("pin_memory", False) or False
     dataloader_params["collate_fn"] = dataset.collate_fn
@@ -102,10 +104,14 @@ def build_dataloader(cfg: Config, dataset: Dataset, mode: str) -> DataLoader:
     if mode == "train":
         dataloader_params["batch_size"] = cfg.batch_size
     else:
-        dataloader_params["batch_size"] = cfg.get("val_batch_size") or cfg.batch_size * 2
+        dataloader_params["batch_size"] = (
+            cfg.get("val_batch_size") or cfg.batch_size * 2
+        )
 
     sampler = None
     if cfg.get("sampler") and cfg.sampler != "" and mode == "train":
+        if cfg.sampler == "SeriesSliceSampler":
+            samplers.configure_series_sampling_schedule(cfg, dataset)
         sampler = getattr(samplers, cfg.sampler)(dataset=dataset, cfg=cfg)
 
     if sampler:

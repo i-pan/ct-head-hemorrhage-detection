@@ -1,0 +1,12 @@
+# Supplemental packages installed into work/deps, not the project's training env.
+# Core torch/numpy/scipy/pandas/nibabel/timm/Pillow/requests come from ../.. .venv.
+gdown==6.4.2
+omegaconf==2.4.0
+antlr4-python3-runtime==4.9.3
+loguru==0.7.3
+beautifulsoup4==4.15.0
+soupsieve==3.0.4
+scikit-image==0.26.0
+lazy-loader==0.6
+imageio==2.38.1
+tifffile==2026.3.3

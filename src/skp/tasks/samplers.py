@@ -1,3 +1,4 @@
+import math
 import numpy as np
 
 from torch.utils.data import Dataset, Sampler, DistributedSampler
@@ -85,6 +86,107 @@ class DistributedSamplerWrapper(DistributedSampler):
 
     def __repr__(self) -> str:
         return f"DistributedSamplerWrapper.{self.sampler}"
+
+    def set_epoch(self, epoch: int) -> None:
+        super().set_epoch(epoch)
+        if hasattr(self.sampler, "set_epoch"):
+            self.sampler.set_epoch(epoch)
+
+
+class SeriesSliceSampler(Sampler):
+    """One slice per series per epoch, cycling two independently shuffled bins.
+
+    Plans use only seed and epoch, never worker/rank RNG state. Lazy replay makes
+    resumed runs reproduce bin positions without serializing sampler state.
+    Repeated iteration of an epoch is idempotent (important for loader setup).
+    """
+
+    def __init__(self, dataset: Dataset, cfg: Config):
+        self.positive_probability = float(
+            cfg.get("series_positive_slice_probability", 0.5)
+        )
+        if not 0 <= self.positive_probability <= 1:
+            raise ValueError("series_positive_slice_probability must be in [0, 1].")
+        if cfg.get("num_iterations_per_epoch") is not None:
+            raise ValueError(
+                "SeriesSliceSampler defines full-series epochs; remove num_iterations_per_epoch."
+            )
+        df = dataset.df
+        labels = df["any"].to_numpy()
+        if not np.isin(labels, [0, 1]).all():
+            raise ValueError("SeriesSliceSampler requires binary any labels.")
+        self.labels = labels
+        self.bins = []
+        for indices in df.groupby("series_uid", sort=True).indices.values():
+            indices = np.asarray(indices, dtype=np.int64)
+            self.bins.append(
+                (indices[labels[indices] == 0], indices[labels[indices] == 1])
+            )
+        if not self.bins:
+            raise ValueError("SeriesSliceSampler requires at least one series.")
+        self.remaining = [[[], []] for _ in self.bins]
+        self.seed = int(cfg.get("seed", 88))
+        self.epoch = 0
+        self.plans = []
+
+    def __len__(self) -> int:
+        return len(self.bins)
+
+    def set_epoch(self, epoch: int) -> None:
+        if epoch < 0:
+            raise ValueError("epoch must be nonnegative")
+        self.epoch = int(epoch)
+
+    def __iter__(self) -> Iterator[int]:
+        while len(self.plans) <= self.epoch:
+            rng = np.random.default_rng(
+                np.random.SeedSequence([self.seed, len(self.plans)])
+            )
+            chosen = []
+            for bins, remaining in zip(self.bins, self.remaining):
+                if len(bins[0]) and len(bins[1]):
+                    category = int(rng.random() < self.positive_probability)
+                else:
+                    category = int(bool(len(bins[1])))
+                if not remaining[category]:
+                    remaining[category] = rng.permutation(bins[category]).tolist()
+                chosen.append(remaining[category].pop())
+            self.plans.append(rng.permutation(chosen))
+        return iter(self.plans[self.epoch].tolist())
+
+
+def configure_series_sampling_schedule(cfg: Config, dataset: Dataset) -> None:
+    """Calculate the exact full-pass DDP/accumulation step budget, fail closed."""
+    sampler = SeriesSliceSampler(dataset, cfg)
+    world_size = int(cfg.world_size)
+    if len(sampler) % world_size:
+        raise ValueError(
+            f"{len(sampler)} series cannot be split exactly across {world_size} ranks. "
+            "Use a divisor of the series count; padding would repeat series."
+        )
+    if cfg.get("train_drop_last", True):
+        raise ValueError(
+            "SeriesSliceSampler requires train_drop_last=False for a full pass."
+        )
+    limit = (cfg.get("args", {}) or {}).get("limit_train_batches")
+    if limit is not None and not (isinstance(limit, float) and limit == 1.0):
+        raise ValueError(
+            "SeriesSliceSampler requires full training epochs; remove limit_train_batches."
+        )
+    batches = math.ceil((len(sampler) // world_size) / cfg.batch_size)
+    accumulation = int(cfg.get("accumulate_grad_batches", 1) or 1)
+    cfg.train_samples_per_epoch = len(sampler)
+    cfg.train_batches_per_epoch_per_rank = batches
+    cfg.optimizer_steps_per_epoch = math.ceil(batches / accumulation)
+    cfg.scheduler_total_steps = cfg.optimizer_steps_per_epoch * cfg.num_epochs
+    if cfg.get("scheduler_interval") != "step":
+        raise ValueError("Series sampling requires an optimizer-step LR schedule.")
+    params = cfg.get("scheduler_params", {}) or {}
+    for name in ["total_steps", "T_max"]:
+        if name in params and params[name] != cfg.scheduler_total_steps:
+            raise ValueError(
+                f"Stale {name}: expected {cfg.scheduler_total_steps}, got {params[name]}."
+            )
 
 
 class IterationBasedSampler(Sampler):

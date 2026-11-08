@@ -1,0 +1,10 @@
+work/
+__pycache__/
+# Keep the buildless frontend source; generated volumes remain local.
+!dist/
+dist/assets/
+
+dist/assets512
+
+# Local, unpublished hosting registration.
+.openai/

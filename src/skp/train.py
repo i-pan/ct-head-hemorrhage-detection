@@ -330,13 +330,13 @@ def create_save_dirs(save_dir: str, overwrite: bool = False) -> None:
 
 def get_trainer(cfg: Config) -> Tuple[lightning.Trainer, Config]:
     save_dir = os.path.join(cfg.save_dir, get_split_save_name(cfg))
-    create_save_dirs(save_dir, overwrite=cfg.overwrite_run or bool(cfg.get("ckpt_path")))
+    create_save_dirs(
+        save_dir, overwrite=cfg.overwrite_run or bool(cfg.get("ckpt_path"))
+    )
     callbacks = []
     if cfg.get("ema") and cfg.ema["on"]:
         _print_rank_zero("\n>> Using EMA ...\n")
-        callbacks.append(
-            EMACallback(**{k: v for k, v in cfg.ema.items() if k != "on"})
-        )
+        callbacks.append(EMACallback(**{k: v for k, v in cfg.ema.items() if k != "on"}))
     else:
         # don't save EMA parameters if not using
         _ = cfg.__dict__.pop("ema", None)
@@ -400,7 +400,9 @@ def get_trainer(cfg: Config) -> Tuple[lightning.Trainer, Config]:
         strategy = cfg.args["strategy"]
         plugins = None
 
-    tracking_uri = cfg.get("mlflow_tracking_uri") or os.environ.get("MLFLOW_TRACKING_URI")
+    tracking_uri = cfg.get("mlflow_tracking_uri") or os.environ.get(
+        "MLFLOW_TRACKING_URI"
+    )
     if cfg.get("dry_run"):
         tracking_uri = os.path.join(cfg.save_dir, "mlflow_dry_run")
         _print_rank_zero(f"MLflow dry run enabled: logging to {tracking_uri}")
@@ -512,12 +514,12 @@ def get_task(
             model.set_criterion(loss)
 
     if cfg.get("auto_calculate_num_val_batches_per_gpu", False):
-        assert (
-            cfg.wds
-        ), "cfg.wds must be True for auto_calculate_num_val_batches_per_gpu"
-        assert getattr(
-            cfg, "shard_sample_suffix", None
-        ), "cfg.shard_sample_suffix must be specified if auto_calculate_num_val_batches_per_gpu is True"
+        assert cfg.wds, (
+            "cfg.wds must be True for auto_calculate_num_val_batches_per_gpu"
+        )
+        assert getattr(cfg, "shard_sample_suffix", None), (
+            "cfg.shard_sample_suffix must be specified if auto_calculate_num_val_batches_per_gpu is True"
+        )
         _print_rank_zero(
             "Automatically calculating number of validation batches per GPU ..."
         )
@@ -536,6 +538,17 @@ def get_task(
 
     if not cfg.wds:
         cfg.n_train, cfg.n_val = len(train_dataset), len(val_dataset)
+
+    if cfg.get("sampler") == "SeriesSliceSampler":
+        from skp.tasks.samplers import configure_series_sampling_schedule
+
+        configure_series_sampling_schedule(cfg, train_dataset)
+        _print_rank_zero(
+            f"SERIES EPOCH: {cfg.train_samples_per_epoch} samples globally, "
+            f"{cfg.train_batches_per_epoch_per_rank} batches/rank, "
+            f"{cfg.optimizer_steps_per_epoch} optimizer steps/epoch, "
+            f"{cfg.scheduler_total_steps} total optimizer steps."
+        )
 
     _print_rank_zero("\n")
     _print_rank_zero(f"TRAIN : N={cfg.n_train}")
@@ -698,7 +711,9 @@ def main():
     cfg.ckpt_path = args.__dict__.pop("ckpt_path")
     print_environment(cfg, args)
 
-    torch.set_float32_matmul_precision(cfg.get("float32_matmul_precision", "high") or "high")
+    torch.set_float32_matmul_precision(
+        cfg.get("float32_matmul_precision", "high") or "high"
+    )
 
     folds = [int(_) for _ in kfold.split(",")] if kfold else [cfg.get("fold")]
     if cfg.get("double_cv") is not None:

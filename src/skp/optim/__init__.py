@@ -71,7 +71,11 @@ def get_scheduler(cfg: Config, optimizer: Optimizer) -> LRScheduler:
     scheduler_params = dict(cfg.get("scheduler_params") or {})
 
     max_step_param = "T_max" if cfg.scheduler == "CosineAnnealingLR" else "total_steps"
-    if cfg.get("num_iterations_per_epoch") is not None:
+    if cfg.get("optimizer_steps_per_epoch") is not None:
+        # Already accounts for sampler length, rank partitioning, partial batches,
+        # and gradient accumulation. Do not divide by accumulation again.
+        steps_per_epoch = cfg.optimizer_steps_per_epoch
+    elif cfg.get("num_iterations_per_epoch") is not None:
         steps_per_epoch = cfg.num_iterations_per_epoch
     else:
         # In DDP, each optimizer step consumes batch_size * world_size examples
@@ -81,9 +85,10 @@ def get_scheduler(cfg: Config, optimizer: Optimizer) -> LRScheduler:
 
     # For scheduler_interval="step", the scheduler is stepped once after every
     # OPTIMIZER step, so steps/epoch needs to be adjusted if using gradient accumulation
-    steps_per_epoch = math.ceil(
-        steps_per_epoch / (cfg.get("accumulate_grad_batches", 1) or 1)
-    )
+    if cfg.get("optimizer_steps_per_epoch") is None:
+        steps_per_epoch = math.ceil(
+            steps_per_epoch / (cfg.get("accumulate_grad_batches", 1) or 1)
+        )
 
     # Update the step count in params
     scheduler_params.setdefault(max_step_param, steps_per_epoch * cfg.num_epochs)
@@ -93,7 +98,9 @@ def get_scheduler(cfg: Config, optimizer: Optimizer) -> LRScheduler:
         optimizer_lrs = [float(g["lr"]) for g in optimizer.param_groups]
         if "max_lr" in scheduler_params:
             max_lrs = _as_group_values(
-                scheduler_params["max_lr"], len(optimizer_lrs), "scheduler_params.max_lr"
+                scheduler_params["max_lr"],
+                len(optimizer_lrs),
+                "scheduler_params.max_lr",
             )
             if max_lrs != optimizer_lrs:
                 raise ValueError(
@@ -105,9 +112,7 @@ def get_scheduler(cfg: Config, optimizer: Optimizer) -> LRScheduler:
 
         scheduler_params.setdefault("init_lr", 0.0)
         scheduler_params.setdefault("final_lr", 0.0)
-        return LinearWarmupCosineAnnealingLR(
-            optimizer=optimizer, **scheduler_params
-        )
+        return LinearWarmupCosineAnnealingLR(optimizer=optimizer, **scheduler_params)
 
     else:
         # Standard PyTorch schedulers (StepLR, ReduceLROnPlateau, etc.)

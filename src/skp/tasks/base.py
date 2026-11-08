@@ -1,4 +1,6 @@
 from collections import defaultdict
+import json
+from pathlib import Path
 from typing import Any, Dict
 
 import lightning
@@ -28,10 +30,66 @@ class BaseTask(lightning.LightningModule):
         if missing:
             raise AttributeError(f"Task missing required attributes: {missing}")
 
+        if self.cfg.get("sampler") == "SeriesSliceSampler":
+            expected = self.cfg.scheduler_total_steps
+            actual = self.trainer.estimated_stepping_batches
+            schedule_steps = getattr(
+                self.scheduler, "total_steps", getattr(self.scheduler, "T_max", None)
+            )
+            if actual != expected or schedule_steps != expected:
+                raise RuntimeError(
+                    f"LR schedule mismatch: Lightning={actual}, planned={expected}, scheduler={schedule_steps}"
+                )
+            if (
+                self.trainer.num_training_batches
+                != self.cfg.train_batches_per_epoch_per_rank
+            ):
+                raise RuntimeError(
+                    "Training loader batch count differs from the LR schedule plan."
+                )
+            self.print(
+                f"VERIFIED LR SCHEDULE: {actual} optimizer steps, "
+                f"warmup={getattr(self.scheduler, 'warmup_steps', 0)}, "
+                f"steps/epoch={self.cfg.optimizer_steps_per_epoch}."
+            )
+            if self.global_rank == 0 and self.cfg.get("save_dir"):
+                report = {
+                    "series_per_epoch": self.cfg.train_samples_per_epoch,
+                    "batches_per_rank": self.trainer.num_training_batches,
+                    "optimizer_steps_per_epoch": self.cfg.optimizer_steps_per_epoch,
+                    "total_optimizer_steps": actual,
+                    "warmup_steps": getattr(self.scheduler, "warmup_steps", 0),
+                    "epochs": self.cfg.num_epochs,
+                    "world_size": self.trainer.world_size,
+                    "batch_size_per_rank": self.cfg.batch_size,
+                    "accumulate_grad_batches": self.trainer.accumulate_grad_batches,
+                    "positive_bin_probability": self.cfg.series_positive_slice_probability,
+                    "bin_policy": "Independent shuffled positive/negative cycles; resume by deterministic epoch replay.",
+                }
+                (Path(self.cfg.save_dir) / "series_sampling_schedule.json").write_text(
+                    json.dumps(report, indent=2)
+                )
+
         if isinstance(self.logger, MLFlowLogger):
             self.logger.log_hyperparams(self.cfg.__dict__)
 
     def on_train_epoch_end(self) -> None:
+        if self.cfg.get("sampler") == "SeriesSliceSampler":
+            if self.scheduler.last_epoch != self.global_step:
+                raise RuntimeError(
+                    "LR scheduler step count has diverged from optimizer steps."
+                )
+            if self.global_rank == 0 and self.cfg.get("save_dir"):
+                record = {
+                    "epoch": self.current_epoch,
+                    "optimizer_step": self.global_step,
+                    "scheduler_step": self.scheduler.last_epoch,
+                    "lr": [g["lr"] for g in self.optimizer.param_groups],
+                }
+                with (Path(self.cfg.save_dir) / "series_sampling_lr.jsonl").open(
+                    "a"
+                ) as stream:
+                    stream.write(json.dumps(record) + "\n")
         if self.global_rank == 0 and isinstance(self.logger, MLFlowLogger):
             self.logger.log_metrics(
                 {"training/epoch": self.current_epoch}, step=self.global_step
