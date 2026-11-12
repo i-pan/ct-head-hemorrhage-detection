@@ -63,8 +63,8 @@ Outputs:
 
 - `slice_logits`, `slice_classification`: N×6, class order epidural,
   intraparenchymal, intraventricular, subarachnoid, subdural, any.
-- `series_classification`: six scores; only **any** has measured test performance
-  for this pooling rule. Subtype series scores are unvalidated.
+- `series_classification`: six scores, with retrospective subtype evaluation below.
+  Independent external performance and calibration remain unvalidated.
 - Optional `segmentation`: N×1×512×512 mean sigmoid probabilities, ungated.
 - Optional `any_logit_map`: N×1×32×32 mean coarse logits, not calibrated masks.
 
@@ -120,6 +120,44 @@ unchanged discrimination. No temperature was fitted on test. External validation
 clinical utility, small-bleed subgroup performance and deployment latency are
 not established here. No full-ensemble segmentation performance is claimed;
 BHSD localization is affected by teacher reuse. Maps are not volume measurements.
+
+### Subtype evaluation
+
+Retrospective evaluation of the same frozen logits, with T=.25 applied to every
+class. No subtype-specific fitting, temperature selection, or checkpoint selection.
+Slice probabilities are sigmoid of the mean member logits; series targets are
+positive if any constituent slice is positive. Labels are multilabel, not mutually
+exclusive. Macro AUROC below averages all six outputs, including `any`.
+
+**Teacher-disjoint subset: 48,972 slices, 1,410 series, 981 patients.**
+
+| Label | Positive slices | Positive series | Slice AUROC | Series AUROC | Series Brier | Series log loss |
+|---|---:|---:|---:|---:|---:|---:|
+| epidural | 258 | 25 | 0.956383 | 0.933978 | 0.016076 | 0.061626 |
+| intraparenchymal | 2,693 | 393 | 0.988461 | 0.973466 | 0.051395 | 0.182217 |
+| intraventricular | 2,067 | 295 | 0.993839 | 0.987544 | 0.030723 | 0.112687 |
+| subarachnoid | 2,549 | 280 | 0.970258 | 0.953025 | 0.063877 | 0.215483 |
+| subdural | 3,303 | 261 | 0.970386 | 0.957264 | 0.060484 | 0.196364 |
+| any | 7,601 | 623 | 0.981303 | 0.981499 | 0.048828 | 0.174175 |
+| Macro AUROC (six outputs) | — | — | 0.976772 | 0.964463 | — | — |
+
+**Original test cohort: 50,415 slices, 1,450 series, 989 patients.**
+
+| Label | Positive slices | Positive series | Slice AUROC | Series AUROC | Series Brier | Series log loss |
+|---|---:|---:|---:|---:|---:|---:|
+| epidural | 264 | 27 | 0.956482 | 0.934645 | 0.016028 | 0.061807 |
+| intraparenchymal | 2,793 | 410 | 0.988036 | 0.972221 | 0.053825 | 0.188809 |
+| intraventricular | 2,178 | 308 | 0.993931 | 0.987991 | 0.029977 | 0.110538 |
+| subarachnoid | 2,646 | 290 | 0.970670 | 0.953558 | 0.063494 | 0.214410 |
+| subdural | 3,368 | 272 | 0.968990 | 0.954606 | 0.063103 | 0.203722 |
+| any | 7,889 | 652 | 0.981026 | 0.980994 | 0.049775 | 0.176477 |
+| Macro AUROC (six outputs) | — | — | 0.976522 | 0.964002 | — | — |
+
+Epidural has only25 positive series in the teacher-disjoint subset, so its
+estimate is less stable. These point estimates have no new confidence intervals
+and do not establish external subtype calibration or clinical utility. All
+previous test-consumption and teacher-overlap caveats still apply. Aggregate
+metrics and source-prediction hashes are in [subtype_evaluation.json](subtype_evaluation.json).
 
 ## Training procedure
 

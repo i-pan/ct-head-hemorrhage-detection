@@ -65,8 +65,9 @@ retain this distinction and the fact that the test set was already consumed.
 
 Average the three slice logits equally, then normalize log-sum-exp over slices
 with T=.25, then sigmoid. The measured endpoint is series-level **any hemorrhage**.
-Subtype logits are available but subtype series performance with this pooling
-has not been measured. Optional segmentation averages three sigmoid maps without
+All six outputs now have retrospective slice/series evaluation, recorded in
+`release/ich_alt/subtype_evaluation.json` and the HF model card. Subtype results
+use the same fixed T=.25 without subtype-specific tuning. Optional segmentation averages three sigmoid maps without
 gating. The binary decoder and coarse maps are for exploratory localization;
 no external segmentation validation or ensemble Dice claim is made.
 

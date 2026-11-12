@@ -1,0 +1,230 @@
+{
+  "protocol": "Three final raw epoch50 models; equal mean slice logits, sigmoid for slices; normalized LSE T=.25 over slices then sigmoid for series. No fitting or subtype-specific tuning. Retrospective already-consumed test set.",
+  "labels": [
+    "epidural",
+    "intraparenchymal",
+    "intraventricular",
+    "subarachnoid",
+    "subdural",
+    "any"
+  ],
+  "source_predictions": {
+    "convnext_tiny": {
+      "checkpoint_sha256": "567a494378e9127f93d7fd97f28f5aae727998fd8307d9ef3833004834a1b599",
+      "archive_sha256": [
+        "1227ac6c3f423ab48c629fbdd9d6e550bff471dd6dee94e90513ba37c8ea4945",
+        "c2538f805b0451f729090e15b42067185e0ff8b5e4c4dc378cf83adca5dd91cd"
+      ],
+      "manifest_sha256": "8552423350661e9394d5c24667d363371f45cb6341049067e27bdb0d33bf17c8"
+    },
+    "maxvit": {
+      "checkpoint_sha256": "c3725984f8b5716e06d0411a88912c9f53d61f92a90e4b8866de8ffbcff208d8",
+      "archive_sha256": [
+        "cb76d127fe2deb37c155526c73b7b2f72dbabd2220cf4eabf6aa825e2383d520",
+        "b26a947da6493ef834a42ce741caf221764af32ca6f59664536955414d9084b8"
+      ],
+      "manifest_sha256": "8552423350661e9394d5c24667d363371f45cb6341049067e27bdb0d33bf17c8"
+    },
+    "coatnet0": {
+      "checkpoint_sha256": "f14287e9746a919be046c0c7e93c8eb2ee94eebb198a7f518543746e524dbcfb",
+      "archive_sha256": [
+        "797843f2fb1b7fd236a43ad8dd8bbb617909f77005cc3965701d150bbc529c22",
+        "0ef1239f696c0d0987d103f8f038c23ce064694e8e48e4be851b84e04a1f6b90"
+      ],
+      "manifest_sha256": "8552423350661e9394d5c24667d363371f45cb6341049067e27bdb0d33bf17c8"
+    }
+  },
+  "teacher_manifest_sha256": "921d486aeeec39ef8161e0d329a3ed5f2e4fc5aedbf41367225b279523f13e5e",
+  "cohorts": {
+    "original": {
+      "slices": 50415,
+      "series": 1450,
+      "patients": 989,
+      "metrics": {
+        "epidural": {
+          "slice": {
+            "positives": 264,
+            "auc": 0.9564818037405821,
+            "brier": 0.004634134922635182,
+            "logloss": 0.019863111319530294
+          },
+          "series": {
+            "positives": 27,
+            "auc": 0.9346451159522137,
+            "brier": 0.016028048449635103,
+            "logloss": 0.06180681215130776
+          }
+        },
+        "intraparenchymal": {
+          "slice": {
+            "positives": 2793,
+            "auc": 0.9880356177315504,
+            "brier": 0.016109688518677674,
+            "logloss": 0.058230237529458495
+          },
+          "series": {
+            "positives": 410,
+            "auc": 0.9722209193245778,
+            "brier": 0.0538250938195716,
+            "logloss": 0.18880923076509676
+          }
+        },
+        "intraventricular": {
+          "slice": {
+            "positives": 2178,
+            "auc": 0.9939308407468458,
+            "brier": 0.009914780818887338,
+            "logloss": 0.036318699043837124
+          },
+          "series": {
+            "positives": 308,
+            "auc": 0.9879909932449337,
+            "brier": 0.029976513725640242,
+            "logloss": 0.11053829463758065
+          }
+        },
+        "subarachnoid": {
+          "slice": {
+            "positives": 2646,
+            "auc": 0.9706696193053156,
+            "brier": 0.023677728584848762,
+            "logloss": 0.08372006345833939
+          },
+          "series": {
+            "positives": 290,
+            "auc": 0.9535582639714625,
+            "brier": 0.06349419874708918,
+            "logloss": 0.2144101375307692
+          }
+        },
+        "subdural": {
+          "slice": {
+            "positives": 3368,
+            "auc": 0.9689899792934615,
+            "brier": 0.02904146500324268,
+            "logloss": 0.09988645305791162
+          },
+          "series": {
+            "positives": 272,
+            "auc": 0.9546058873464496,
+            "brier": 0.06310335587156293,
+            "logloss": 0.20372214136677314
+          }
+        },
+        "any": {
+          "slice": {
+            "positives": 7889,
+            "auc": 0.9810258658312196,
+            "brier": 0.03609098499641168,
+            "logloss": 0.12537477050328577
+          },
+          "series": {
+            "positives": 652,
+            "auc": 0.9809935113858265,
+            "brier": 0.0497748769068301,
+            "logloss": 0.17647700887293363
+          }
+        }
+      },
+      "macro_auc": {
+        "slice": 0.9765222877748291,
+        "series": 0.9640024485375774
+      }
+    },
+    "teacher_disjoint": {
+      "slices": 48972,
+      "series": 1410,
+      "patients": 981,
+      "metrics": {
+        "epidural": {
+          "slice": {
+            "positives": 258,
+            "auc": 0.956383016136265,
+            "brier": 0.004701278560429414,
+            "logloss": 0.020059407377113928
+          },
+          "series": {
+            "positives": 25,
+            "auc": 0.9339783393501805,
+            "brier": 0.016076464704650018,
+            "logloss": 0.061625709220290585
+          }
+        },
+        "intraparenchymal": {
+          "slice": {
+            "positives": 2693,
+            "auc": 0.98846143757778,
+            "brier": 0.0157943951310055,
+            "logloss": 0.0570914649163213
+          },
+          "series": {
+            "positives": 393,
+            "auc": 0.9734663394056758,
+            "brier": 0.05139523993171781,
+            "logloss": 0.18221678704296754
+          }
+        },
+        "intraventricular": {
+          "slice": {
+            "positives": 2067,
+            "auc": 0.9938387234137576,
+            "brier": 0.009829517332717233,
+            "logloss": 0.036041312667124265
+          },
+          "series": {
+            "positives": 295,
+            "auc": 0.9875442730105647,
+            "brier": 0.03072319982706469,
+            "logloss": 0.11268681307547543
+          }
+        },
+        "subarachnoid": {
+          "slice": {
+            "positives": 2549,
+            "auc": 0.9702579923557089,
+            "brier": 0.023841817585062482,
+            "logloss": 0.0842024162709132
+          },
+          "series": {
+            "positives": 280,
+            "auc": 0.9530246523388116,
+            "brier": 0.06387677514443574,
+            "logloss": 0.21548325146608988
+          }
+        },
+        "subdural": {
+          "slice": {
+            "positives": 3303,
+            "auc": 0.9703862695029798,
+            "brier": 0.028742154573209874,
+            "logloss": 0.09868804655969994
+          },
+          "series": {
+            "positives": 261,
+            "auc": 0.9572641877494673,
+            "brier": 0.060484456311943866,
+            "logloss": 0.19636427994224495
+          }
+        },
+        "any": {
+          "slice": {
+            "positives": 7601,
+            "auc": 0.9813033268284349,
+            "brier": 0.03561633089228291,
+            "logloss": 0.12407764031500523
+          },
+          "series": {
+            "positives": 623,
+            "auc": 0.9814991199283705,
+            "brier": 0.04882790092273284,
+            "logloss": 0.17417507333074878
+          }
+        }
+      },
+      "macro_auc": {
+        "slice": 0.9767717943024876,
+        "series": 0.9644628186305116
+      }
+    }
+  }
+}
