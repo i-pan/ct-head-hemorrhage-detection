@@ -8,34 +8,34 @@ max pooling, and a binary U-Net decoder. This is distinct from the
 ## Released training recipe
 
 Inputs: three contiguous axial slices, brain/subdural/bone windows, nine channels,
-512×512, center-slice six-label classification. Any hemorrhage has BCE weight2;
-the other five subtypes have weight1. ImageNet initialization; all model weights
+512 × 512, center-slice six-label classification. Any hemorrhage has BCE weight 2;
+the other five subtypes have weight 1. ImageNet initialization; all model weights
 trainable. Missing neighbors are zero windowed channels.
 
 Fifty epochs, one center slice per series per epoch. Positive series select the
-positive or negative bin with probability .5 each, falling back to the nonempty
+positive or negative bin with probability 0.5 each, falling back to the nonempty
 bin. Bins cycle independently through unsampled slices before reshuffling.
-AdamW LR3e-4, weight decay .01, 5% linear warmup then cosine to1e-6, actual
-optimizer-step schedule, batch32/GPU on two GPUs without accumulation. Historical
-runs used299 steps/epoch and14950 updates. Each model uses its final checkpoint,
-not the validation-selected best. BF16 mixed precision, seed88.
+AdamW LR 3e-4, weight decay 0.01, 5% linear warmup then cosine to 1e-6, actual
+optimizer-step schedule, batch 32/GPU on two GPUs without accumulation. Historical
+runs used 299 steps/epoch and 14,950 updates. Each model uses its final checkpoint,
+not the validation-selected best. BF16 mixed precision, seed 88.
 
-Augmentations match classification: depth/horizontal/vertical flips at .25,
+Augmentations match classification: depth/horizontal/vertical flips at 0.25,
 one of no-op, affine, brightness/contrast, blur, noise or coarse dropout. Spatial
 mask transforms align with images; coarse dropout also zeros the pseudo-mask.
 
 Fifteen final segmentation teachers generated mean-probability soft masks for
 positive training slices (three families × five BHSD folds). Each teacher used
-a classifier-initialized encoder, U-Net,25 positive-slice passes, batch Dice+BCE,
+a classifier-initialized encoder, U-Net, 25 positive-slice passes, batch Dice+BCE,
 and encoder LR one tenth decoder LR. Known-negative slices have empty masks.
 Student real masks are not oversampled or mixed in. The teacher ensemble itself
 is not distributed with the student release.
 
 The student decoder uses BCE plus batch Dice, with Dice limited to positive
 slices. The spatial any-logit map uses BCE against adaptive-max-pooled teacher
-probabilities. Decoder loss and spatial loss each have coefficient .5. Pixels
-inside HU[0,100] OR teacher≥.07 dilated by a radius of3 pixels have weight1;
-outside pixels have weight.25. Weighted losses normalize by the weight sum.
+probabilities. Decoder loss and spatial loss each have coefficient 0.5. Pixels
+inside HU [0, 100] OR teacher ≥ 0.07 dilated by a radius of 3 pixels have weight 1;
+outside pixels have weight 0.25. Weighted losses normalize by the weight sum.
 
 Exact configs:
 
@@ -58,24 +58,23 @@ reproduce the historical cohort byte-for-byte or promise identical metrics.
 Historical students excluded directly matching BHSD studies but included other
 BHSD-patient studies; supplemental teacher masks covered their positive slices.
 The portable clean route does not need that supplement. The old split also left
-8 teacher patients in test and1 in validation. The published evaluation must
+8 teacher patients in test and 1 in validation. The published evaluation must
 retain this distinction and the fact that the test set was already consumed.
 
 ## Inference and measured comparison
 
 Average the three slice logits equally, then normalize log-sum-exp over slices
-with T=.25, then sigmoid. The measured endpoint is series-level **any hemorrhage**.
+with T = 0.25, then sigmoid. The measured endpoint is series-level **any hemorrhage**.
 All six outputs now have retrospective slice/series evaluation, recorded in
 `release/ich_alt/subtype_evaluation.json` and the HF model card. Subtype results
-use the same fixed T=.25 without subtype-specific tuning. Optional segmentation averages three sigmoid maps without
+use the same fixed T = 0.25 without subtype-specific tuning. Optional segmentation averages three sigmoid maps without
 gating. The binary decoder and coarse maps are for exploratory localization;
 no external segmentation validation or ensemble Dice claim is made.
 
-On the post-hoc teacher-disjoint subset (1410 series,981 patients), AUC=.981499,
-Brier=.048828, log loss=.174175; at .5 sensitivity=.951846 and specificity=.918679.
-The original1450-series results were .980994/.049775/.176477 respectively.
+On the post-hoc teacher-disjoint subset (1,410 series, 981 patients), AUC = 0.981499,
+Brier = 0.048828, log loss = 0.174175; at 0.5 sensitivity = 0.951846 and specificity = 0.918679.
 These are not untouched holdout estimates. At the same three-model logits, max
-pooling gives corrected-cohort AUC=.981277, Brier=.060390, log loss=.209873.
+pooling gives corrected-cohort AUC = 0.981277, Brier = 0.060390, log loss = 0.209873.
 The probability-quality benefit of LSE transfers; the AUC difference is inconclusive.
 No test-set fitting occurred. The later comparison is exploratory.
 

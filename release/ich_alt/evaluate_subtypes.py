@@ -12,6 +12,7 @@ from skp.ich_alt import LABELS, sha256
 
 def evaluate(evidence, teachers):
     logits = []
+    ref = manifest = None
     provenance = {}
     for name in ("convnext_tiny", "maxvit", "coatnet0"):
         paths = [evidence / f"{name}_rank{rank}.npz" for rank in (0, 1)]
@@ -105,6 +106,8 @@ def evaluate(evidence, teachers):
             previous[key],
             rtol=1e-12,
         )
+    # Keep the original-cohort reproduction check internal; publish only teacher-disjoint results.
+    result["cohorts"].pop("original")
     return result
 
 
