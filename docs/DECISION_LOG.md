@@ -66,3 +66,13 @@ refresh them. Legacy validation_predictions.npz remains a historical best export
 and is never silently relabeled final. Current queues pick up the new export
 entrypoint after training without stopping any run. Completed runs are being
 backfilled separately. Final-only ensemble analysis excludes MaxViT-75.
+
+## 2026-11-10 segmentation teachers and pseudo-label supervision
+
+See [Segmentation teachers and auxiliary classification supervision](SEGMENTATION_PSEUDOLABEL_PLAN.md)
+for agreed data boundaries, teacher protocol, the 25-pass review decision,
+annotation-only HU coverage results, pseudo-mask construction/loss proposals,
+the planned out-of-fold teacher-ROI audit, and proposed decoder/spatial-map
+classification ablations. BHSD remains excluded from direct student training;
+real-mask mixing/oversampling was rejected. These plans do not imply that the
+queue hold or downstream experiments have been implemented.

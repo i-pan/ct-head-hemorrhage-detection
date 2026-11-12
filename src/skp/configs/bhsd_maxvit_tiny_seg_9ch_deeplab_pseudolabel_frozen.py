@@ -1,3 +1,4 @@
+import os
 from skp.configs._bhsd_maxvit_tiny_seg_common import (
     CLASSIFIER_CHECKPOINT,
     make_cfg,
@@ -31,3 +32,5 @@ cfg.prefetch_factor = 2
 cfg.val_prefetch_factor = 2
 cfg.persistent_workers = False
 cfg.val_persistent_workers = False
+
+cfg.load_pretrained_model = os.environ.get("ICH_LEGACY_DECODER_PRETRAIN", cfg.load_pretrained_model)

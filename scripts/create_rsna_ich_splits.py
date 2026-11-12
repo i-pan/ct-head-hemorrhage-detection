@@ -45,6 +45,8 @@ def parse_args() -> argparse.Namespace:
             "studies from their patients to a fixed validation split."
         ),
     )
+    parser.add_argument("--bhsd-scope", choices=["patient", "study"], default="patient", help="Patient exclusion protects the teacher-student holdout; study is historical only.")
+    parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--num-folds", type=int, default=5)
     parser.add_argument("--seed", type=int, default=88)
     parser.add_argument(
@@ -354,9 +356,14 @@ def summarize(
 
 def main() -> None:
     args = parse_args()
+    if not args.overwrite and (args.output.exists() or args.summary_output.exists()):
+        raise FileExistsError("Split outputs exist; choose new output paths or --overwrite")
     df = scan_rsna_images(args.rsna_root)
     matches = collect_bhsd_matches(df, args.bhsd_root)
     df = mark_bhsd_exclusions(df, matches)
+    if args.bhsd_scope == "patient":
+        patients = set(df.loc[df.excluded_bhsd, "patient_id"])
+        df["excluded_bhsd"] = df.patient_id.isin(patients)
     df = assign_splits(
         df,
         test_studies=args.test_studies,
@@ -372,6 +379,7 @@ def main() -> None:
         val_studies=args.val_studies,
         seed=args.seed,
     )
+    summary["bhsd_scope"] = args.bhsd_scope
     summary["bhsd_matches"] = {key: len(value) for key, value in matches.items()}
 
     output_df = df

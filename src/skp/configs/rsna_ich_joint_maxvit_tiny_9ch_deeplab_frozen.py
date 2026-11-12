@@ -1,3 +1,4 @@
+from skp.toolbox.ich_paths import path
 from skp.configs._bhsd_maxvit_tiny_seg_common import CLASSIFIER_CHECKPOINT
 from skp.configs.rsna_ich_joint_maxvit_tiny_9ch_deeplab import cfg
 
@@ -9,7 +10,7 @@ cfg.frozen_encoder_eval = True
 cfg.freeze_classifier = True
 cfg.dataset = "rsna_ich_seg_cls_bhsd_val"
 cfg.train_positive_series_only = True
-cfg.bhsd_annotations_file = "./data/bhsd/bhsd_segmentation_slices.csv"
+cfg.bhsd_annotations_file = str(path("ICH_BHSD_MANIFEST", "./data/bhsd/bhsd_segmentation_slices.csv"))
 cfg.bhsd_mask_cache_size = 16
 
 cfg.loss = "combined.CombinedLoss"

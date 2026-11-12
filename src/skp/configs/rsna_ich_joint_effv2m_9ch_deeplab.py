@@ -1,3 +1,4 @@
+from skp.toolbox.ich_paths import path
 import albumentations as A
 import cv2
 
@@ -46,8 +47,8 @@ cfg.backbone_img_size = False
 cfg.fold = 0
 cfg.split_column = "fold"
 cfg.dataset = "rsna_ich_seg_cls"
-cfg.data_dir = "/mnt/champaca/rsna-intracranial-hemorrhage-detection-16bit-png"
-cfg.annotations_file = "./data/folds/rsna_ich_fixed_val_splits.csv"
+cfg.data_dir = str(path("ICH_RSNA_ROOT", "/mnt/champaca/rsna-intracranial-hemorrhage-detection-16bit-png"))
+cfg.annotations_file = str(path("ICH_SPLITS", "./data/folds/rsna_ich_fixed_val_splits.csv"))
 cfg.labels_file = f"{cfg.data_dir}/slice_labels.csv"
 cfg.rescale_file = f"{cfg.data_dir}/rescale_values.csv"
 cfg.pseudolabel_dir = "./data/pseudolabels/rsna_9ch_last"

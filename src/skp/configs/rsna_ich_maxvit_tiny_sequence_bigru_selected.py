@@ -1,3 +1,4 @@
+import os
 from skp.configs.rsna_ich_maxvit_tiny_sequence_bigru import cfg as base_cfg
 
 
@@ -29,3 +30,6 @@ cfg.slice_blend_alphas = [0.75, 0.75, 0.75, 0.75, 0.75, 1.0]
 cfg.series_blend_alphas = [0.5, 0.25, 0.5, 1.0, 0.5, 0.5]
 cfg.mil_blend_alphas = [0.75, 0.25, 0.5, 0.5, 1.0, 0.25]
 
+
+cfg.source_classifier_checkpoint = os.environ.get("ICH_LEGACY_CLASSIFIER", cfg.source_classifier_checkpoint)
+cfg.selected_sequence_checkpoint = os.environ.get("ICH_LEGACY_SEQUENCE", cfg.selected_sequence_checkpoint)

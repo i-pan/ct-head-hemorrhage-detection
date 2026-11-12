@@ -1,3 +1,4 @@
+from skp.toolbox.ich_paths import path
 import albumentations as A
 import cv2
 
@@ -43,7 +44,7 @@ def make_cfg() -> Config:
     cfg.fold = 0
     cfg.split_column = "fold"
     cfg.dataset = "bhsd_seg"
-    cfg.annotations_file = "./data/bhsd/bhsd_segmentation_slices.csv"
+    cfg.annotations_file = str(path("ICH_BHSD_MANIFEST", "./data/bhsd/bhsd_segmentation_slices.csv"))
     cfg.label_columns = [
         "epidural",
         "intraparenchymal",

@@ -1,3 +1,9 @@
+# ICH project pipelines
+
+For this repository’s hemorrhage experiments, start with [ICH_PIPELINE.md](docs/ICH_PIPELINE.md).
+It covers data acquisition, teacher-safe splits, the ROI-weight-0.25 three-backbone
+recipe, and LSE evaluation. The [prior published MaxViT/BiGRU/DeepLab training route](docs/ICH_LEGACY_PIPELINE.md) is supported separately.
+
 # SKPv2
 
 SKPv2 is a personal deep learning experiment framework for rapid prototyping.

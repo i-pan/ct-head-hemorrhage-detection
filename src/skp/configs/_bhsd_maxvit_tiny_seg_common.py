@@ -1,3 +1,4 @@
+import os
 from skp.configs import Config
 from skp.configs._bhsd_effv2m_seg_common import make_cfg as make_base_cfg
 
@@ -7,6 +8,7 @@ CLASSIFIER_CHECKPOINT = (
     "maxvit_tiny_9ch_20260714/fold0/checkpoints/last.ckpt"
 )
 
+CLASSIFIER_CHECKPOINT = os.environ.get("ICH_LEGACY_CLASSIFIER", CLASSIFIER_CHECKPOINT)
 
 def make_cfg() -> Config:
     cfg = make_base_cfg()
