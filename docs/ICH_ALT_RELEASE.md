@@ -90,7 +90,7 @@ Dataset terms remain separate; see `release/ich_alt/NOTICE.md`.
 
 ## Published release
 
-[Alternate HF model](https://huggingface.co/ianpan/ct-head-hemorrhage-detection-alt/tree/faac61d23d08f50b6c999ed2aea416d92890139b)
+[Alternate HF model](https://huggingface.co/ianpan/ct-head-hemorrhage-detection-alt/tree/17ccace98e1363cb295d1fceae8ebb245a0ef287)
 contains the three final raw checkpoints, installable minimal runtime, hashes and
 verification report. See `release/ich_alt/receipt.json` for immutable revisions
 and rollback references. Code/source revision is `cbab8c9778530ac7dd0ede90a597e3087987893d`.

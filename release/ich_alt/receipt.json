@@ -1,15 +1,18 @@
 {
   "repo_id": "ianpan/ct-head-hemorrhage-detection-alt",
-  "revision": "faac61d23d08f50b6c999ed2aea416d92890139b",
+  "revision": "17ccace98e1363cb295d1fceae8ebb245a0ef287",
   "source_revision": "cbab8c9778530ac7dd0ede90a597e3087987893d",
-  "manifest_sha256": "f0be6ae4cccfa0662e122db1783392175dc639f99770c71ba4061c276ff520b9",
+  "manifest_sha256": "ec75a57f84694e75b933bcb13a1a3e3ad7afcbc9215b1ff7682d86a113ab25b9",
   "status": "released_and_verified",
-  "files": 13,
+  "files": 14,
   "weights_revision": "af3fea32c9093495e39beccb727136e33afed767",
   "prior_model_previous_revision": "e6d89c253fdcc2a597dd0fd0f5771821f4947b37",
   "prior_model_updated_revision": "21d5a897c690ecd5da75fca444cbf0c73646a1dc",
   "visibility": "public",
   "remote_inventory": "all payload SHA-256 verified from newly downloaded pinned snapshot",
   "remote_smoke": "installed allowlisted runtime, public remote download + strict single-member loading + GPU classification/segmentation passed",
-  "payload_bytes": 387611464
+  "payload_bytes": 387617802,
+  "previous_documentation_revision": "faac61d23d08f50b6c999ed2aea416d92890139b",
+  "evaluation_source_revision": "e1eccdb54b58e39d1f0b6907edfecc4377431805",
+  "documentation_verification": "Pinned remote inventory hashes verified; live card contains teacher-disjoint-only subtype tables and numeric spacing corrections; weights/runtime unchanged."
 }
