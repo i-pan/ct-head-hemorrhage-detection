@@ -87,3 +87,16 @@ teacher weights. Fine-tuning begins from a selected unfrozen member with a newly
 constructed optimizer; use the full training pipeline for auxiliary objectives.
 The author selected Apache-2.0 for the new weights and MIT for project code.
 Dataset terms remain separate; see `release/ich_alt/NOTICE.md`.
+
+## Published release
+
+[Alternate HF model](https://huggingface.co/ianpan/ct-head-hemorrhage-detection-alt/tree/faac61d23d08f50b6c999ed2aea416d92890139b)
+contains the three final raw checkpoints, installable minimal runtime, hashes and
+verification report. See `release/ich_alt/receipt.json` for immutable revisions
+and rollback references. Code/source revision is `cbab8c9778530ac7dd0ede90a597e3087987893d`.
+
+All payload files were downloaded at the pinned HF revision and SHA-256 verified.
+A remote-ID download and installed-wheel single-member GPU inference passed.
+Local real-image checks matched all three original checkpoint outputs exactly;
+140 repository tests passed. The wheel was installed into an isolated target
+using existing dependencies; a full fresh dependency installation was not tested.

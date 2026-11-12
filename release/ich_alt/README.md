@@ -73,18 +73,18 @@ probabilities; it has no classifier or ground-truth gate. No teacher models are
 required at inference. All three architectures are used by default. Subsets select
 architectures, not folds; full-ensemble metrics do not apply to subsets.
 
-After publication, retrieve a pinned release (replace HF_COMMIT with the receipt):
+After publication, retrieve a pinned release (replace af3fea32c9093495e39beccb727136e33afed767 with the receipt):
 
 ```python
 from huggingface_hub import snapshot_download
-folder = snapshot_download("ianpan/ct-head-hemorrhage-detection-alt", revision="HF_COMMIT")
+folder = snapshot_download("ianpan/ct-head-hemorrhage-detection-alt", revision="af3fea32c9093495e39beccb727136e33afed767")
 ```
 
 Single-member download avoids downloading the other weights:
 
 ```python
 from skp.ich_alt import download_release, load_member
-folder = download_release("HF_COMMIT", families=("convnext_tiny",))
+folder = download_release("af3fea32c9093495e39beccb727136e33afed767", families=("convnext_tiny",))
 member = load_member(folder, "convnext_tiny", device="cuda:0")
 member.train()  # parameters are unfrozen; construct a new optimizer
 # For classification fine-tuning:
