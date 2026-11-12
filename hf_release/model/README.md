@@ -19,6 +19,10 @@ metrics:
 
 # CT Head Hemorrhage Detection
 
+**[Alternate stride-16 ensemble](https://huggingface.co/ianpan/ct-head-hemorrhage-detection-alt)** uses ConvNeXt-Tiny, MaxViT-Tiny and CoAtNet-0 with spatial-logit pooling, auxiliary binary decoders, and LSE series pooling. This original release retains the MaxViT/BiGRU/DeepLab design.
+
+**Training reproduction:** [complete prior-release recipe](https://github.com/i-pan/ct-head-hemorrhage-detection/blob/a557df791f139862e266dd696405bda1dfcc247c/docs/ICH_LEGACY_PIPELINE.md). The corrected reproduction split excludes all BHSD patients; historical metrics describe the original cohort and are not promised for a new run.
+
 Research model for slice- and series-level intracranial hemorrhage detection and
 slice-level localization on noncontrast head CT. The complete system combines:
 

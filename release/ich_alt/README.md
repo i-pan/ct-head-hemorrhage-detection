@@ -19,8 +19,8 @@ metrics:
 Three final stride-16 classifiers (ConvNeXt-Tiny, MaxViT-Tiny, CoAtNet-0), each
 with a binary localization decoder. Classification is primary; maps are exploratory.
 
-**[Source](https://github.com/i-pan/ct-head-hemorrhage-detection/tree/SOURCE_REVISION)
-· [Specific training reproduction](https://github.com/i-pan/ct-head-hemorrhage-detection/blob/SOURCE_REVISION/docs/ICH_ALT_RELEASE.md)
+**[Source](https://github.com/i-pan/ct-head-hemorrhage-detection/tree/a557df791f139862e266dd696405bda1dfcc247c)
+· [Specific training reproduction](https://github.com/i-pan/ct-head-hemorrhage-detection/blob/a557df791f139862e266dd696405bda1dfcc247c/docs/ICH_ALT_RELEASE.md)
 · [Training procedure](#training-procedure)
 · [Original MaxViT/BiGRU model](https://huggingface.co/ianpan/ct-head-hemorrhage-detection)**
 
@@ -139,7 +139,7 @@ add .5×(decoder BCE+positive-only batch Dice) and .5×spatial-map BCE. HU[0,100
 OR teacher≥.07 dilated3px receives weight1; other pixels weight.25. Coarse targets
 use max pooling. No real-mask oversampling. Teacher weights are not in the release.
 
-The [reproduction guide](https://github.com/i-pan/ct-head-hemorrhage-detection/blob/SOURCE_REVISION/docs/ICH_ALT_RELEASE.md)
+The [reproduction guide](https://github.com/i-pan/ct-head-hemorrhage-detection/blob/a557df791f139862e266dd696405bda1dfcc247c/docs/ICH_ALT_RELEASE.md)
 links exact configs, historical launchers, and the complete acquisition→teacher→
 pseudolabel→student route. New reproduction excludes all BHSD patients and derives
 step counts from the resulting cohort. Historical runs excluded matched studies
